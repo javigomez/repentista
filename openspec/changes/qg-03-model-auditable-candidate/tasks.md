@@ -1,7 +1,7 @@
 ## 1. Specify behavior first
 
 - [x] 1.1 Add failing tests for four verse slots, roles, provenance and initial state, verifying incomplete aggregates cannot be created.
-- [ ] 1.2 Add failing transition-table tests for allowed and forbidden state changes, rejection evidence and immutable repair history.
+- [x] 1.2 Add failing transition-table tests for allowed and forbidden state changes, rejection evidence and immutable repair history.
 
 ## 2. Implement the aggregate
 
