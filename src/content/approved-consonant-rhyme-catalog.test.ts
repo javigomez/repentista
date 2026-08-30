@@ -6,10 +6,15 @@ import {
   type ApprovedConsonantRhymeEntry,
 } from "./approved-consonant-rhyme-catalog/index.js";
 
+type EntryOverrides = Partial<
+  Pick<ApprovedConsonantRhymeEntry, "editorialFamily" | "editorialRoles">
+>;
+
 const entry = (
   word: string,
   category: ApprovedConsonantRhymeEntry["category"],
   phoneticTail: string,
+  overrides: EntryOverrides = {},
 ): ApprovedConsonantRhymeEntry => ({
   word,
   lemma: word,
@@ -19,6 +24,7 @@ const entry = (
   phoneticTail,
   status: "approved",
   editorialRoles: ["preparation", "punchline"],
+  ...overrides,
 });
 
 const goldEntries = Object.freeze([
@@ -72,4 +78,94 @@ test("does not return pairs that are only assonant", () => {
   assert.equal(catalog.findFamilyByWord("encina")?.tail.value, "ina");
   assert.deepEqual(catalog.findRhymesForWord("rima").map((item) => item.word), []);
   assert.deepEqual(catalog.findRhymesForWord("encina").map((item) => item.word), []);
+});
+
+const filteredEntries = Object.freeze([
+  entry("dragón", "noun", "ón", { editorialRoles: ["punchline"] }),
+  entry("balcón", "noun", "ón", { editorialRoles: ["preparation"] }),
+  entry("camión", "noun", "ón", { editorialRoles: ["punchline"] }),
+  entry("marrón", "adjective", "ón", { editorialRoles: ["preparation"] }),
+] satisfies readonly ApprovedConsonantRhymeEntry[]);
+
+test("filters rhyme candidates by category and editorial role without mutating the catalog", () => {
+  const catalog = buildApprovedConsonantRhymeCatalog({
+    dictionaryVersion: "gold-2026-08-30",
+    entries: filteredEntries,
+  });
+
+  assert.deepEqual(
+    catalog
+      .findRhymesForWord("dragón", {
+        categories: ["noun"],
+        editorialRoles: ["preparation"],
+      })
+      .map((item) => item.word),
+    ["balcón"],
+  );
+  assert.deepEqual(
+    catalog
+      .findRhymesForWord("dragón", {
+        categories: ["adjective"],
+        editorialRoles: ["preparation"],
+      })
+      .map((item) => item.word),
+    ["marrón"],
+  );
+  assert.deepEqual(catalog.findFamilyByWord("dragón")?.words.map((item) => item.word), [
+    "balcón",
+    "camión",
+    "dragón",
+    "marrón",
+  ]);
+});
+
+test("explains empty filtered results without inventing rhyme words", () => {
+  const catalog = buildApprovedConsonantRhymeCatalog({
+    dictionaryVersion: "gold-2026-08-30",
+    entries: filteredEntries,
+  });
+
+  const result = catalog.explainRhymesForWord("dragón", {
+    categories: ["adverb"],
+    editorialRoles: ["preparation"],
+  });
+
+  assert.deepEqual(result.words.map((item) => item.word), []);
+  assert.equal(result.explanation.code, "no-approved-rhyme-after-filters");
+  assert.equal(result.explanation.familyTail.value, "on");
+  assert.deepEqual(result.explanation.filters, {
+    categories: ["adverb"],
+    editorialRoles: ["preparation"],
+  });
+  assert.deepEqual(result.explanation.consideredApprovedWords, [
+    "balcón",
+    "camión",
+    "marrón",
+  ]);
+});
+
+test("rejects entries whose editorial family conflicts with the phonetic tail", () => {
+  assert.throws(
+    () =>
+      buildApprovedConsonantRhymeCatalog({
+        dictionaryVersion: "gold-2026-08-30",
+        entries: [
+          entry("fuego", "noun", "uego", { editorialFamily: "ego" }),
+          entry("juego", "noun", "uego", { editorialFamily: "uego" }),
+        ],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.name, "ApprovedConsonantRhymeCatalogError");
+      assert.deepEqual((error as { issues?: unknown }).issues, [
+        {
+          code: "editorial-family-mismatch",
+          word: "fuego",
+          phoneticTail: "uego",
+          editorialFamily: "ego",
+        },
+      ]);
+      return true;
+    },
+  );
 });
