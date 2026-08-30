@@ -1,7 +1,7 @@
 ## 1. Verify dependency and specify contracts
 
-- [ ] 1.1 Verify the current `weiwei/silabacion` README, package API, MIT license and chosen exact version, recording the evidence in dependency metadata.
-- [ ] 1.2 Add failing contract tests from the gold corpus for syllables, stress, aguda/llana, diptongos, hiatos, unsupported and inconsistent results.
+- [x] 1.1 Verify the current `weiwei/silabacion` README, package API, MIT license and chosen exact version, recording the evidence in dependency metadata.
+- [x] 1.2 Add failing contract tests from the gold corpus for syllables, stress, aguda/llana, diptongos, hiatos, unsupported and inconsistent results.
 
 ## 2. Implement the adapter
 
