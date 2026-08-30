@@ -1,2 +1,2 @@
 /** Public entrypoint for provider-neutral ports. */
-export {};
+export type * from "./structured-llm-generation/index.js";
