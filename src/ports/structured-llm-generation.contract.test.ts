@@ -164,6 +164,114 @@ test("rejects invalid structured output without returning partial data", async (
   assert.equal("value" in result, false);
 });
 
+const providerErrorScenarios = [
+  {
+    name: "timeout",
+    code: "TIMEOUT",
+    message: "Structured LLM operation timed out after 1000 ms.",
+    retryable: true,
+    providerRequestId: "fixture-timeout",
+    completedAt: "2026-08-30T10:00:02.000Z",
+    durationMs: 1_000,
+  },
+  {
+    name: "cancellation",
+    code: "CANCELLED",
+    message: "Structured LLM operation was cancelled.",
+    retryable: false,
+    providerRequestId: "fixture-cancelled",
+    completedAt: "2026-08-30T10:00:03.000Z",
+    durationMs: 7,
+  },
+  {
+    name: "authentication",
+    code: "AUTHENTICATION_FAILED",
+    message: "The provider rejected authentication.",
+    retryable: false,
+    providerRequestId: "fixture-authentication",
+    completedAt: "2026-08-30T10:00:04.000Z",
+    durationMs: 5,
+  },
+  {
+    name: "rate limit",
+    code: "RATE_LIMITED",
+    message: "The provider rate limit was exceeded.",
+    retryable: true,
+    retryAfterMs: 2_500,
+    providerRequestId: "fixture-rate-limit",
+    completedAt: "2026-08-30T10:00:05.000Z",
+    durationMs: 11,
+  },
+  {
+    name: "content rejection",
+    code: "CONTENT_REJECTED",
+    message: "The provider rejected the content.",
+    retryable: false,
+    providerRequestId: "fixture-rejection",
+    completedAt: "2026-08-30T10:00:06.000Z",
+    durationMs: 17,
+  },
+  {
+    name: "provider unavailable",
+    code: "PROVIDER_UNAVAILABLE",
+    message: "The provider is unavailable.",
+    retryable: true,
+    providerRequestId: "fixture-unavailable",
+    completedAt: "2026-08-30T10:00:07.000Z",
+    durationMs: 31,
+  },
+] as const;
+
+for (const scenario of providerErrorScenarios) {
+  test(`normalizes ${scenario.name} errors without returning data`, async () => {
+    const generator = new FixtureStructuredLlmGenerator([
+      {
+        operation: "plan-semantic-outline",
+        provider: "fixture-provider",
+        model: "fixture-structured-v1",
+        providerRequestId: scenario.providerRequestId,
+        completedAt: scenario.completedAt,
+        durationMs: scenario.durationMs,
+        error: {
+          code: scenario.code,
+          message: scenario.message,
+          retryable: scenario.retryable,
+          retryAfterMs: "retryAfterMs" in scenario ? scenario.retryAfterMs : undefined,
+        },
+      },
+    ]);
+
+    const result = await generator.generate(baseRequest());
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+
+    assert.equal(result.error.code, scenario.code);
+    assert.equal(result.error.message, scenario.message);
+    assert.equal(result.error.retryable, scenario.retryable);
+    assert.deepEqual(result.error.provenance, {
+      provider: "fixture-provider",
+      model: "fixture-structured-v1",
+      operation: "plan-semantic-outline",
+      prompt: {
+        id: "planner.semantic-outline",
+        version: "0.1.0",
+      },
+      requestId: scenario.providerRequestId,
+      completedAt: scenario.completedAt,
+      durationMs: scenario.durationMs,
+    });
+    assert.equal("validationIssues" in result.error, false);
+    assert.equal("value" in result, false);
+
+    if ("retryAfterMs" in scenario) {
+      assert.equal(result.error.retryAfterMs, scenario.retryAfterMs);
+    } else {
+      assert.equal("retryAfterMs" in result.error, false);
+    }
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
