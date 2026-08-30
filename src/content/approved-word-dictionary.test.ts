@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   createApprovedWord,
+  createInMemoryApprovedWordDictionary,
   type ApprovedWordInput,
 } from "./approved-word-dictionary/index.js";
 
@@ -90,4 +91,99 @@ test("keeps preparation and punchline permissions independent", () => {
 
   assert.equal(result.value.allowedAsPreparation, true);
   assert.equal(result.value.allowedAsPunchline, false);
+});
+
+test("finds one approved entry by normalized form within the requested version", () => {
+  const dictionary = createInMemoryApprovedWordDictionary({
+    versions: {
+      "dictionary-2026-08-30": [
+        validInput({ form: "dragón", lemma: "dragón", status: "approved" }),
+        validInput({ form: "balcón", lemma: "balcón", status: "approved" }),
+      ],
+    },
+  });
+
+  const result = dictionary.findByForm({
+    version: "dictionary-2026-08-30",
+    form: "  DRAGON ",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.status, "approved");
+  assert.equal(result.entry.form, "dragón");
+  assert.equal(result.entry.normalizedForm, "dragon");
+  assert.equal(result.entry.version, "dictionary-2026-08-30");
+  assert.equal(Object.isFrozen(result.entry), true);
+});
+
+test("distinguishes a pending entry without treating it as approved", () => {
+  const dictionary = createInMemoryApprovedWordDictionary({
+    versions: {
+      "dictionary-2026-08-30": [
+        validInput({
+          form: "ruego",
+          lemma: "ruego",
+          status: "pending",
+          allowedAsPreparation: true,
+          allowedAsPunchline: false,
+        }),
+      ],
+    },
+  });
+
+  const result = dictionary.findByForm({
+    version: "dictionary-2026-08-30",
+    form: "rúego",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.status, "pending");
+  assert.equal(result.entry.form, "ruego");
+  assert.equal(result.entry.status, "pending");
+});
+
+test("reports missing words in an available version with the normalized lookup form", () => {
+  const dictionary = createInMemoryApprovedWordDictionary({
+    versions: {
+      "dictionary-2026-08-30": [validInput({ form: "dragón", lemma: "dragón" })],
+    },
+  });
+
+  const result = dictionary.findByForm({
+    version: "dictionary-2026-08-30",
+    form: "jirafa",
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    status: "missing",
+    version: "dictionary-2026-08-30",
+    normalizedForm: "jirafa",
+  });
+});
+
+test("reports unavailable dictionary versions without falling back to another snapshot", () => {
+  const dictionary = createInMemoryApprovedWordDictionary({
+    versions: {
+      "dictionary-2026-08-30": [validInput({ form: "dragón", lemma: "dragón" })],
+    },
+  });
+
+  const result = dictionary.findByForm({
+    version: "dictionary-2026-09-01",
+    form: "dragón",
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: "DICTIONARY_VERSION_UNAVAILABLE",
+      version: "dictionary-2026-09-01",
+      availableVersions: ["dictionary-2026-08-30"],
+    },
+  });
 });
