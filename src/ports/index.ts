@@ -1,5 +1,4 @@
 /** Public entrypoint for provider-neutral ports. */
-
 export type WordStressKind = "aguda" | "llana";
 
 export interface WordAnalysisVersions {
@@ -43,3 +42,4 @@ export type WordAnalysisResult = TrustedWordAnalysis | UntrustedWordAnalysis;
 export interface WordAnalysisPort {
   analyze(word: string): WordAnalysisResult;
 }
+
