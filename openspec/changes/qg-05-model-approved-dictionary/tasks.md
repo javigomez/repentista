@@ -1,6 +1,6 @@
 ## 1. Specify behavior first
 
-- [ ] 1.1 Add failing tests for complete entries, normalization, aguda/llana constraints and preparation/remate permissions.
+- [x] 1.1 Add failing tests for complete entries, normalization, aguda/llana constraints and preparation/remate permissions.
 - [ ] 1.2 Add failing repository-contract tests for approved, pending, missing and unavailable-version queries.
 
 ## 2. Implement the dictionary domain
