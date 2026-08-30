@@ -1,6 +1,6 @@
 ## 1. Specify behavior first
 
-- [ ] 1.1 Add failing gold tests for consonant families including `-ón`, `-uego`, `-ado` and pairs that are only assonant.
+- [x] 1.1 Add failing gold tests for consonant families including `-ón`, `-uego`, `-ado` and pairs that are only assonant.
 - [ ] 1.2 Add failing tests for role/category filters, empty results and inconsistent editorial family data.
 
 ## 2. Implement the catalog
