@@ -5,7 +5,7 @@
 
 ## 2. Implement the port and fake
 
-- [ ] 2.1 Define provider-neutral request, response and error types, verifying no SDK type appears in public declarations.
+- [x] 2.1 Define provider-neutral request, response and error types, verifying no SDK type appears in public declarations.
 - [ ] 2.2 Implement local schema validation and a deterministic fixture-driven fake, verifying sequential successes and failures are reproducible.
 
 ## 3. Verify
