@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import type {
   StructuredLlmGenerationRequest,
@@ -19,12 +20,12 @@ interface SemanticOutline {
 
 const validOutline: SemanticOutline = Object.freeze({
   finalConcept: "Un dragon confunde el humo con perfume",
-  verses: Object.freeze([
-    Object.freeze({ slot: "V1", role: "presentacion" }),
-    Object.freeze({ slot: "V2", role: "preparacion" }),
-    Object.freeze({ slot: "V3", role: "giro_tension" }),
-    Object.freeze({ slot: "V4", role: "remate" }),
-  ]),
+  verses: [
+    { slot: "V1", role: "presentacion" },
+    { slot: "V2", role: "preparacion" },
+    { slot: "V3", role: "giro_tension" },
+    { slot: "V4", role: "remate" },
+  ] as const,
 });
 
 const semanticOutlineSchema: StructuredLlmOutputSchema<SemanticOutline> = Object.freeze({
@@ -52,8 +53,17 @@ const semanticOutlineSchema: StructuredLlmOutputSchema<SemanticOutline> = Object
       };
     }
 
-    return { ok: true as const, value: value as SemanticOutline };
+    return { ok: true as const, value: value as unknown as SemanticOutline };
   },
+});
+
+test("keeps public structured generation declarations provider-neutral", async () => {
+  const source = await readFile("src/ports/structured-llm-generation/index.ts", "utf8");
+
+  assert.doesNotMatch(source, /\bOpenAI\b/u);
+  assert.doesNotMatch(source, /\bOpenCode\b/u);
+  assert.doesNotMatch(source, /\bAnthropic\b/u);
+  assert.doesNotMatch(source, /from\s+["'](?:openai|@openai|opencode|@anthropic)/u);
 });
 
 const baseRequest = (): StructuredLlmGenerationRequest<SemanticOutline> => ({
@@ -269,6 +279,95 @@ for (const scenario of providerErrorScenarios) {
     } else {
       assert.equal("retryAfterMs" in result.error, false);
     }
+  });
+}
+
+test("replays fixture sequences deterministically", async () => {
+  const createGenerator = (): FixtureStructuredLlmGenerator =>
+    new FixtureStructuredLlmGenerator([
+      {
+        operation: "plan-semantic-outline",
+        output: validOutline,
+        provider: "fixture-provider",
+        model: "fixture-structured-v1",
+        providerRequestId: "fixture-sequence-1",
+        completedAt: "2026-08-30T10:01:00.000Z",
+        durationMs: 13,
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+        },
+      },
+      {
+        operation: "plan-semantic-outline",
+        provider: "fixture-provider",
+        model: "fixture-structured-v1",
+        providerRequestId: "fixture-sequence-2",
+        completedAt: "2026-08-30T10:01:01.000Z",
+        durationMs: 1_000,
+        error: {
+          code: "TIMEOUT",
+          message: "Structured LLM operation timed out after 1000 ms.",
+          retryable: true,
+        },
+      },
+      {
+        operation: "plan-semantic-outline",
+        output: {
+          finalConcept: "Un dragon se perfuma con humo",
+          verses: validOutline.verses,
+        },
+        provider: "fixture-provider",
+        model: "fixture-structured-v1",
+        providerRequestId: "fixture-sequence-3",
+        completedAt: "2026-08-30T10:01:02.000Z",
+        durationMs: 15,
+        usage: {
+          inputTokens: 11,
+          outputTokens: 22,
+        },
+      },
+    ]);
+
+  const firstRun = await collectSequence(createGenerator());
+  const secondRun = await collectSequence(createGenerator());
+
+  assert.deepEqual(firstRun, [
+    { ok: true, requestId: "fixture-sequence-1", totalTokens: 30 },
+    { ok: false, code: "TIMEOUT", requestId: "fixture-sequence-2" },
+    { ok: true, requestId: "fixture-sequence-3", totalTokens: 33 },
+  ]);
+  assert.deepEqual(secondRun, firstRun);
+});
+
+async function collectSequence(
+  generator: FixtureStructuredLlmGenerator,
+): Promise<
+  readonly (
+    | { readonly ok: true; readonly requestId: string; readonly totalTokens: number }
+    | { readonly ok: false; readonly code: string; readonly requestId: string | undefined }
+  )[]
+> {
+  const results = await Promise.all([
+    generator.generate(baseRequest()),
+    generator.generate(baseRequest()),
+    generator.generate(baseRequest()),
+  ]);
+
+  return results.map((result) => {
+    if (result.ok) {
+      return {
+        ok: true as const,
+        requestId: result.value.provenance.requestId,
+        totalTokens: result.value.usage.totalTokens,
+      };
+    }
+
+    return {
+      ok: false as const,
+      code: result.error.code,
+      requestId: result.error.provenance?.requestId,
+    };
   });
 }
 
