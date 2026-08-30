@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  ApprovedWordDictionaryCreationError,
   createApprovedWord,
   createInMemoryApprovedWordDictionary,
   type ApprovedWordInput,
@@ -91,6 +92,53 @@ test("keeps preparation and punchline permissions independent", () => {
 
   assert.equal(result.value.allowedAsPreparation, true);
   assert.equal(result.value.allowedAsPunchline, false);
+});
+
+test("rejects incomplete entries with field errors", () => {
+  const result = createApprovedWord({
+    ...validInput(),
+    form: "   ",
+    lemma: "",
+    category: "   ",
+    allowedAsPreparation: "true" as unknown as boolean,
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.deepEqual(
+    result.errors.map((error) => [error.field, error.code]),
+    [
+      ["form", "REQUIRED"],
+      ["lemma", "REQUIRED"],
+      ["category", "REQUIRED"],
+      ["allowedAsPreparation", "INVALID_BOOLEAN"],
+    ],
+  );
+});
+
+test("rejects duplicate normalized forms in one dictionary version with field errors", () => {
+  assert.throws(
+    () =>
+      createInMemoryApprovedWordDictionary({
+        versions: {
+          "dictionary-2026-08-30": [
+            validInput({ form: "dragón", lemma: "dragón" }),
+            validInput({ form: "Dragon", lemma: "dragon" }),
+          ],
+        },
+      }),
+    (error: unknown) => {
+      assert.equal(error instanceof ApprovedWordDictionaryCreationError, true);
+      if (!(error instanceof ApprovedWordDictionaryCreationError)) return false;
+
+      assert.deepEqual(
+        error.errors.map((fieldError) => [fieldError.field, fieldError.code]),
+        [["versions.dictionary-2026-08-30[1].form", "DUPLICATE_FORM"]],
+      );
+      return true;
+    },
+  );
 });
 
 test("finds one approved entry by normalized form within the requested version", () => {
@@ -186,4 +234,26 @@ test("reports unavailable dictionary versions without falling back to another sn
       availableVersions: ["dictionary-2026-08-30"],
     },
   });
+});
+
+test("keeps dictionary snapshots isolated from caller mutations", () => {
+  const entries = [validInput({ form: "dragón", lemma: "dragón" })];
+  const dictionary = createInMemoryApprovedWordDictionary({
+    versions: {
+      "dictionary-2026-08-30": entries,
+    },
+  });
+
+  entries[0] = validInput({ form: "balcón", lemma: "balcón" });
+
+  const result = dictionary.findByForm({
+    version: "dictionary-2026-08-30",
+    form: "dragón",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.status, "approved");
+  assert.equal(result.entry.form, "dragón");
 });

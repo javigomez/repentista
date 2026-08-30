@@ -5,9 +5,9 @@
 
 ## 2. Implement the dictionary domain
 
-- [ ] 2.1 Implement entry value objects and factories, verifying invalid or duplicate forms are rejected with field errors.
-- [ ] 2.2 Define the immutable versioned dictionary port and in-memory test implementation, verifying snapshot isolation.
+- [x] 2.1 Implement entry value objects and factories, verifying invalid or duplicate forms are rejected with field errors.
+- [x] 2.2 Define the immutable versioned dictionary port and in-memory test implementation, verifying snapshot isolation.
 
 ## 3. Verify
 
-- [ ] 3.1 Run `npm test` and `npm run build`, verifying dictionary behavior and architecture boundaries pass.
+- [x] 3.1 Run `npm test` and `npm run build`, verifying dictionary behavior and architecture boundaries pass.
