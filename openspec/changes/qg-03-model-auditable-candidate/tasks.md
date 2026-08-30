@@ -5,7 +5,7 @@
 
 ## 2. Implement the aggregate
 
-- [ ] 2.1 Implement candidate value objects, events and typed transitions, verifying all lifecycle tests pass.
+- [x] 2.1 Implement candidate value objects, events and typed transitions, verifying all lifecycle tests pass.
 - [ ] 2.2 Add deterministic ID/clock collaborators and snapshot serialization, verifying fixed doubles produce stable snapshots.
 
 ## 3. Verify
