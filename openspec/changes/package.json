@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "openspec:cli": "env OPENSPEC_TELEMETRY=0 DO_NOT_TRACK=1 openspec",
+    "openspec:validate-proposal": "node .openspec-shipper/scripts/validate-openspec-proposal.mjs",
+    "lint:branch": "node .openspec-shipper/scripts/validate-branch-name.mjs",
+    "lint:commits": "commitlint --from origin/$(git branch --show-current) --to HEAD"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "@fission-ai/openspec": "^1.2.0"
+  }
+}
