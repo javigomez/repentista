@@ -7,7 +7,9 @@ import {
 } from "./generation-brief/index.js";
 import {
   createQuatrainCandidate,
+  createQuatrainCandidateWithCollaborators,
   recordCandidateRepair,
+  toQuatrainCandidateSnapshot,
   transitionQuatrainCandidate,
   type CandidateLifecycleTransitionInput,
   type CandidatePlanInput,
@@ -16,6 +18,7 @@ import {
   type QuatrainCandidate,
   type QuatrainCandidateInput,
 } from "./quatrain-candidate/index.js";
+import { fixedClock, sequenceDouble } from "../testing/test-doubles.js";
 
 const CREATED_AT = "2026-08-30T09:15:00.000Z";
 const VALIDATION_STARTED_AT = "2026-08-30T09:16:00.000Z";
@@ -101,6 +104,17 @@ function candidateInput(overrides: Partial<QuatrainCandidateInput> = {}): Quatra
     plan: completePlan(),
     provenance: provenance(),
     ...overrides,
+  };
+}
+
+function candidateFactoryInput() {
+  const { createdAt: _createdAt, ...provenanceWithoutCreatedAt } = provenance();
+
+  return {
+    batchId: "batch-001",
+    brief: validBrief(),
+    plan: completePlan(),
+    provenance: provenanceWithoutCreatedAt,
   };
 }
 
@@ -529,4 +543,119 @@ test("records repairs as immutable history without overwriting prior attempts", 
   assert.deepEqual(repairedTwice.value.repairs[1], secondRepair);
   assert.equal(Object.isFrozen(repairedTwice.value.repairs), true);
   assert.equal(Object.isFrozen(repairedTwice.value.repairs[0]), true);
+});
+
+test("creates candidates with deterministic ID and clock collaborators", () => {
+  const input = candidateFactoryInput();
+  const collaborators = {
+    nextCandidateId: sequenceDouble(["candidate-fixed-001"]),
+    now: fixedClock(CREATED_AT),
+  };
+
+  const result = createQuatrainCandidateWithCollaborators(input, collaborators);
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.id, "candidate-fixed-001");
+  assert.equal(result.value.provenance.createdAt, CREATED_AT);
+  assert.deepEqual(result.value.provenance.generator, input.provenance.generator);
+  assert.equal(result.value.events[0]?.at, CREATED_AT);
+});
+
+test("serializes stable JSON snapshots from fixed doubles", () => {
+  const createWithFixedDoubles = (): QuatrainCandidate => {
+    const result = createQuatrainCandidateWithCollaborators(candidateFactoryInput(), {
+      nextCandidateId: sequenceDouble(["candidate-fixed-001"]),
+      now: fixedClock(CREATED_AT),
+    });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) {
+      throw new Error("Expected deterministic candidate creation to succeed");
+    }
+
+    return applyTransition(result.value, validationRequestedTransition());
+  };
+
+  const firstSnapshot = toQuatrainCandidateSnapshot(createWithFixedDoubles());
+  const secondSnapshot = toQuatrainCandidateSnapshot(createWithFixedDoubles());
+
+  assert.deepEqual(firstSnapshot, secondSnapshot);
+  assert.deepEqual(JSON.parse(JSON.stringify(firstSnapshot)), firstSnapshot);
+  assert.deepEqual(firstSnapshot, {
+    schemaVersion: "quatrain-candidate-snapshot/v1",
+    id: "candidate-fixed-001",
+    batchId: "batch-001",
+    state: "VALIDACION_PENDIENTE",
+    brief: {
+      context: "Un gato promete compartir la merienda",
+      tone: "absurdo y cercano",
+      candidateCount: 100,
+      topK: 5,
+      minimumScore: 80,
+      scheme: "0-A-0-A",
+      rhyme: "consonant",
+      metricPositions: 7,
+    },
+    plan: completePlan(),
+    provenance: provenance(),
+    events: [
+      {
+        type: "CANDIDATE_CREATED",
+        at: CREATED_AT,
+      },
+      {
+        type: "VALIDATION_REQUESTED",
+        at: VALIDATION_STARTED_AT,
+        validators: [
+          { name: "metric", version: "metric-0.1.0" },
+          { name: "rhyme", version: "rhyme-0.1.0" },
+          { name: "lexicon", version: "lexicon-0.1.0" },
+        ],
+      },
+    ],
+    rejections: [],
+    repairs: [],
+    validationRequest: {
+      at: VALIDATION_STARTED_AT,
+      validators: [
+        { name: "metric", version: "metric-0.1.0" },
+        { name: "rhyme", version: "rhyme-0.1.0" },
+        { name: "lexicon", version: "lexicon-0.1.0" },
+      ],
+    },
+  });
+});
+
+test("serializes rejection and repair history without sharing mutable arrays", () => {
+  const rejected = candidateInState("RECHAZADO");
+  const repair: CandidateRepairInput = {
+    at: "2026-08-30T09:22:00.000Z",
+    repairedBy: "writer-repair",
+    sourceRejectionPointer: "/validation/metric/V3",
+    changes: [
+      {
+        slot: "V3",
+        before: "se distrae con hambre repentina",
+        after: "se despista con su hambre",
+      },
+    ],
+    prompt: { id: "repair-metric-verse", version: "prompt-0.1.0" },
+    model: { provider: "openai", name: "gpt-5", version: "2026-08-30" },
+  };
+  const repaired = recordCandidateRepair(rejected, repair);
+
+  assert.equal(repaired.ok, true);
+  if (!repaired.ok) return;
+
+  const snapshot = toQuatrainCandidateSnapshot(repaired.value);
+
+  assert.equal(snapshot.state, "RECHAZADO");
+  assert.deepEqual(snapshot.rejections, repaired.value.rejections);
+  assert.deepEqual(snapshot.repairs, [repair]);
+  assert.equal(snapshot.events.at(-1)?.type, "REPAIR_RECORDED");
+  assert.notEqual(snapshot.events, repaired.value.events);
+  assert.notEqual(snapshot.repairs, repaired.value.repairs);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), snapshot);
 });

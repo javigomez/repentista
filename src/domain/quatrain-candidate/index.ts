@@ -70,6 +70,27 @@ export interface QuatrainCandidateInput {
   readonly provenance: CandidateProvenanceInput;
 }
 
+export interface CandidateProvenanceTemplateInput {
+  readonly generator: ComponentVersion;
+  readonly prompt: PromptReference;
+  readonly model: ModelReference;
+}
+
+export interface QuatrainCandidateFactoryInput {
+  readonly batchId: string;
+  readonly brief: GenerationBrief;
+  readonly plan: CandidatePlanInput;
+  readonly provenance: CandidateProvenanceTemplateInput;
+}
+
+export type CandidateIdFactory = () => string;
+export type CandidateClock = () => Date;
+
+export interface QuatrainCandidateCollaborators {
+  readonly nextCandidateId: CandidateIdFactory;
+  readonly now: CandidateClock;
+}
+
 export interface EvidenceReference {
   readonly pointer: string;
   readonly summary?: string;
@@ -263,6 +284,28 @@ export interface QuatrainCandidate {
   readonly exportRecord?: ExportRecord;
 }
 
+export const QUATRAIN_CANDIDATE_SNAPSHOT_VERSION = "quatrain-candidate-snapshot/v1" as const;
+
+export interface QuatrainCandidateSnapshot {
+  readonly schemaVersion: typeof QUATRAIN_CANDIDATE_SNAPSHOT_VERSION;
+  readonly id: string;
+  readonly batchId: string;
+  readonly brief: GenerationBrief;
+  readonly plan: CandidatePlan;
+  readonly provenance: CandidateProvenance;
+  readonly state: QuatrainCandidateState;
+  readonly events: readonly CandidateLifecycleEvent[];
+  readonly rejections: readonly CandidateRejectionInput[];
+  readonly repairs: readonly CandidateRepairInput[];
+  readonly validationRequest?: ValidationRequestRecord;
+  readonly validationCompletion?: ValidationCompletionRecord;
+  readonly score?: ScoreRecord;
+  readonly thresholdFailure?: ThresholdRecord;
+  readonly finalistSelection?: FinalistSelectionRecord;
+  readonly editorialDecision?: EditorialDecisionRecord;
+  readonly exportRecord?: ExportRecord;
+}
+
 export type CandidateCreationError =
   | {
       readonly field: "plan.slots";
@@ -385,6 +428,59 @@ const freezeRepair = (repair: CandidateRepairInput): CandidateRepairInput =>
     model: freezeModel(repair.model),
   });
 
+const freezeValidationRequest = (record: ValidationRequestRecord): ValidationRequestRecord =>
+  Object.freeze({
+    at: record.at,
+    validators: Object.freeze(record.validators.map(freezeComponentVersion)),
+  });
+
+const freezeValidationCompletion = (
+  record: ValidationCompletionRecord,
+): ValidationCompletionRecord =>
+  Object.freeze({
+    at: record.at,
+    diagnostics: Object.freeze(record.diagnostics.map(freezeDiagnostic)),
+  });
+
+const freezeScore = (record: ScoreRecord): ScoreRecord =>
+  Object.freeze({
+    at: record.at,
+    rubricVersion: record.rubricVersion,
+    score: record.score,
+    breakdown: Object.freeze(record.breakdown.map(freezeScoreBreakdown)),
+    explanation: record.explanation,
+  });
+
+const freezeThreshold = (record: ThresholdRecord): ThresholdRecord =>
+  Object.freeze({
+    at: record.at,
+    threshold: record.threshold,
+    score: record.score,
+    reason: record.reason,
+  });
+
+const freezeFinalistSelection = (record: FinalistSelectionRecord): FinalistSelectionRecord =>
+  Object.freeze({
+    at: record.at,
+    rank: record.rank,
+    selectedBy: record.selectedBy,
+  });
+
+const freezeEditorialDecision = (record: EditorialDecisionRecord): EditorialDecisionRecord =>
+  Object.freeze({
+    at: record.at,
+    editor: record.editor,
+    reason: record.reason,
+    decision: record.decision,
+  });
+
+const freezeExport = (record: ExportRecord): ExportRecord =>
+  Object.freeze({
+    at: record.at,
+    packageId: record.packageId,
+    contractVersion: record.contractVersion,
+  });
+
 const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
   Object.freeze({
     ...event,
@@ -422,6 +518,18 @@ const freezeProvenance = (provenance: CandidateProvenanceInput): CandidateProven
     generator: freezeComponentVersion(provenance.generator),
     prompt: freezePrompt(provenance.prompt),
     model: freezeModel(provenance.model),
+  });
+
+const freezeBrief = (brief: GenerationBrief): GenerationBrief =>
+  Object.freeze({
+    context: brief.context,
+    tone: brief.tone,
+    candidateCount: brief.candidateCount,
+    topK: brief.topK,
+    minimumScore: brief.minimumScore,
+    scheme: brief.scheme,
+    rhyme: brief.rhyme,
+    metricPositions: brief.metricPositions,
   });
 
 const createCandidate = (candidate: QuatrainCandidate): QuatrainCandidate =>
@@ -541,6 +649,58 @@ export function createQuatrainCandidate(
   return Object.freeze({ ok: true as const, value: candidate });
 }
 
+export function createQuatrainCandidateWithCollaborators(
+  input: QuatrainCandidateFactoryInput,
+  collaborators: QuatrainCandidateCollaborators,
+): QuatrainCandidateCreationResult {
+  return createQuatrainCandidate({
+    id: collaborators.nextCandidateId(),
+    batchId: input.batchId,
+    brief: input.brief,
+    plan: input.plan,
+    provenance: {
+      createdAt: collaborators.now().toISOString(),
+      generator: input.provenance.generator,
+      prompt: input.provenance.prompt,
+      model: input.provenance.model,
+    },
+  });
+}
+
+export function toQuatrainCandidateSnapshot(
+  candidate: QuatrainCandidate,
+): QuatrainCandidateSnapshot {
+  return Object.freeze({
+    schemaVersion: QUATRAIN_CANDIDATE_SNAPSHOT_VERSION,
+    id: candidate.id,
+    batchId: candidate.batchId,
+    state: candidate.state,
+    brief: freezeBrief(candidate.brief),
+    plan: freezePlan(candidate.plan),
+    provenance: freezeProvenance(candidate.provenance),
+    events: Object.freeze(candidate.events.map(freezeEvent)),
+    rejections: Object.freeze(candidate.rejections.map(freezeRejection)),
+    repairs: Object.freeze(candidate.repairs.map(freezeRepair)),
+    ...(candidate.validationRequest === undefined
+      ? {}
+      : { validationRequest: freezeValidationRequest(candidate.validationRequest) }),
+    ...(candidate.validationCompletion === undefined
+      ? {}
+      : { validationCompletion: freezeValidationCompletion(candidate.validationCompletion) }),
+    ...(candidate.score === undefined ? {} : { score: freezeScore(candidate.score) }),
+    ...(candidate.thresholdFailure === undefined
+      ? {}
+      : { thresholdFailure: freezeThreshold(candidate.thresholdFailure) }),
+    ...(candidate.finalistSelection === undefined
+      ? {}
+      : { finalistSelection: freezeFinalistSelection(candidate.finalistSelection) }),
+    ...(candidate.editorialDecision === undefined
+      ? {}
+      : { editorialDecision: freezeEditorialDecision(candidate.editorialDecision) }),
+    ...(candidate.exportRecord === undefined ? {} : { exportRecord: freezeExport(candidate.exportRecord) }),
+  });
+}
+
 const invalidTransition = (
   candidate: QuatrainCandidate,
   transition: CandidateLifecycleTransitionInput,
@@ -656,10 +816,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          validationRequest: Object.freeze({
-            at: transition.at,
-            validators: Object.freeze(transition.validators.map(freezeComponentVersion)),
-          }),
+          validationRequest: freezeValidationRequest(transition),
         }),
       });
     case "HARD_VALIDATION_PASSED":
@@ -667,10 +824,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          validationCompletion: Object.freeze({
-            at: transition.at,
-            diagnostics: Object.freeze(transition.diagnostics.map(freezeDiagnostic)),
-          }),
+          validationCompletion: freezeValidationCompletion(transition),
         }),
       });
     case "HARD_VALIDATION_REJECTED": {
@@ -689,13 +843,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          score: Object.freeze({
-            at: transition.at,
-            rubricVersion: transition.rubricVersion,
-            score: transition.score,
-            breakdown: Object.freeze(transition.breakdown.map(freezeScoreBreakdown)),
-            explanation: transition.explanation,
-          }),
+          score: freezeScore(transition),
         }),
       });
     case "THRESHOLD_FAILED":
@@ -703,12 +851,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          thresholdFailure: Object.freeze({
-            at: transition.at,
-            threshold: transition.threshold,
-            score: transition.score,
-            reason: transition.reason,
-          }),
+          thresholdFailure: freezeThreshold(transition),
         }),
       });
     case "FINALIST_SELECTED":
@@ -716,11 +859,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          finalistSelection: Object.freeze({
-            at: transition.at,
-            rank: transition.rank,
-            selectedBy: transition.selectedBy,
-          }),
+          finalistSelection: freezeFinalistSelection(transition),
         }),
       });
     case "EDITORIAL_APPROVED":
@@ -728,7 +867,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          editorialDecision: Object.freeze({
+          editorialDecision: freezeEditorialDecision({
             at: transition.at,
             editor: transition.editor,
             reason: transition.reason,
@@ -741,7 +880,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          editorialDecision: Object.freeze({
+          editorialDecision: freezeEditorialDecision({
             at: transition.at,
             editor: transition.editor,
             reason: transition.reason,
@@ -754,11 +893,7 @@ export function transitionQuatrainCandidate(
         ok: true as const,
         value: candidateWith(candidate, {
           ...basePatch,
-          exportRecord: Object.freeze({
-            at: transition.at,
-            packageId: transition.packageId,
-            contractVersion: transition.contractVersion,
-          }),
+          exportRecord: freezeExport(transition),
         }),
       });
   }
