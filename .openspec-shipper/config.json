@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "profile": "node-npm",
+  "baseBranch": "main",
+  "packageManager": "npm",
+  "executor": {
+    "provider": "opencode",
+    "opencode": {
+      "bin": "opencode",
+      "model": "opencode-go/deepseek-v4-pro"
+    },
+    "codex": {
+      "bin": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "xhigh"
+    },
+    "claude": {
+      "bin": "claude",
+      "model": "sonnet",
+      "effort": "low",
+      "permissionMode": "dontAsk",
+      "sandbox": "strict"
+    }
+  },
+  "github": {
+    "autoOpenPr": false,
+    "prChecks": false
+  },
+  "checks": {
+    "install": "npm ci",
+    "updateDependencies": "npm install",
+    "branch": "npm run lint:branch --",
+    "commits": "npx commitlint",
+    "typecheck": "",
+    "lint": "",
+    "format": "",
+    "unit": "",
+    "openspec": "npm run openspec:cli --",
+    "validateProposal": "npm run openspec:validate-proposal --"
+  },
+  "worktree": {
+    "install": true,
+    "installTimeoutMs": 600000
+  },
+  "delivery": {
+    "refreshPolicy": "auto"
+  },
+  "archive": {
+    "publishMode": "direct",
+    "maxAttempts": 3
+  },
+  "safety": {
+    "enablePush": true,
+    "enableArchive": true
+  }
+}
