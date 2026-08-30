@@ -6,8 +6,8 @@
 ## 2. Implement the adapter
 
 - [x] 2.1 Add the pinned dependency and implement the `WordAnalysisPort` translation, verifying only infrastructure imports the package.
-- [ ] 2.2 Add invariant checks and normalized errors, verifying unsupported/esdrújula cases never return trusted analysis.
+- [x] 2.2 Add invariant checks and normalized errors, verifying unsupported/esdrújula cases never return trusted analysis.
 
 ## 3. Verify
 
-- [ ] 3.1 Run `npm test` and `npm run build`, verifying dependency contract and architecture tests pass.
+- [x] 3.1 Run `npm test` and `npm run build`, verifying dependency contract and architecture tests pass.

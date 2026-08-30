@@ -130,35 +130,110 @@ function normalizeSyllables(value: unknown): readonly string[] | undefined {
     return undefined;
   }
 
-  const syllables = value.map((item) => (typeof item === "string" ? item : undefined));
+  const syllables = value.map(normalizeSyllable);
 
-  if (syllables.some((item) => item === undefined || item.length === 0)) {
+  if (syllables.some((item) => item === undefined)) {
     return undefined;
   }
 
   return Object.freeze([...syllables]) as readonly string[];
 }
 
+function normalizeSyllable(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return normalizeNonBlankString(value);
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const onset = value.onset;
+  const nucleus = value.nucleus;
+  const coda = value.coda;
+
+  if (
+    typeof onset !== "string" ||
+    typeof nucleus !== "string" ||
+    typeof coda !== "string"
+  ) {
+    return undefined;
+  }
+
+  if (normalizeNonBlankString(nucleus) === undefined) {
+    return undefined;
+  }
+
+  return normalizeNonBlankString(`${onset}${nucleus}${coda}`);
+}
+
 function normalizeStressKind(value: unknown): WordStressKind | "unsupported" | undefined {
+  const numericStressKind = normalizeStressNumber(value);
+
+  if (numericStressKind !== undefined) {
+    return numericStressKind;
+  }
+
   const normalized = normalizeStressLabel(value);
 
   if (!normalized) {
     return undefined;
   }
 
-  if (normalized.includes("esdrujula") || normalized.includes("sobreesdrujula")) {
+  if (
+    normalized.includes("esdrujula") ||
+    normalized.includes("sobreesdrujula") ||
+    normalized.includes("proparoxytone") ||
+    normalized.includes("superproparoxytone")
+  ) {
     return "unsupported";
   }
 
-  if (normalized.includes("aguda")) {
+  if (normalized.includes("aguda") || normalized.includes("oxytone")) {
     return "aguda";
   }
 
-  if (normalized.includes("llana") || normalized.includes("grave")) {
+  if (
+    normalized.includes("llana") ||
+    normalized.includes("grave") ||
+    normalized.includes("paroxytone")
+  ) {
     return "llana";
   }
 
   return undefined;
+}
+
+function normalizeStressNumber(value: unknown): WordStressKind | "unsupported" | undefined {
+  const numericValue = typeof value === "number" ? value : numericValueFromRecord(value);
+
+  if (numericValue === undefined) {
+    return undefined;
+  }
+
+  if (numericValue === 1) {
+    return "aguda";
+  }
+
+  if (numericValue === 2) {
+    return "llana";
+  }
+
+  if (numericValue === 3 || numericValue === 4) {
+    return "unsupported";
+  }
+
+  return undefined;
+}
+
+function numericValueFromRecord(value: unknown): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const candidate = value.value;
+
+  return typeof candidate === "number" ? candidate : undefined;
 }
 
 function normalizeStressLabel(value: unknown): string | undefined {
@@ -193,15 +268,20 @@ function normalizeTonicIndex(
   syllables: readonly string[],
   stressKind: WordStressKind,
 ): number | undefined {
+  // silabacion's tonic field is a syllable object, not a stable index; derive ours from stress.
+  const expectedIndex = expectedTonicIndex(stressKind, syllables.length);
+
+  if (expectedIndex === undefined) {
+    return undefined;
+  }
+
   const candidates = tonicIndexCandidates(value, syllables);
 
-  return candidates.find(
-    (candidate) =>
-      Number.isInteger(candidate) &&
-      candidate >= 0 &&
-      candidate < syllables.length &&
-      stressMatchesTonicIndex(stressKind, candidate, syllables.length),
-  );
+  if (candidates.length === 0) {
+    return expectedIndex;
+  }
+
+  return candidates.includes(expectedIndex) ? expectedIndex : undefined;
 }
 
 function tonicIndexCandidates(value: unknown, syllables: readonly string[]): number[] {
@@ -228,16 +308,12 @@ function numericTonicIndexCandidates(value: number): number[] {
   return value === 0 ? [0] : [value, value - 1];
 }
 
-function stressMatchesTonicIndex(
-  stressKind: WordStressKind,
-  tonicIndex: number,
-  syllableCount: number,
-): boolean {
+function expectedTonicIndex(stressKind: WordStressKind, syllableCount: number): number | undefined {
   if (stressKind === "aguda") {
-    return tonicIndex === syllableCount - 1;
+    return syllableCount === 0 ? undefined : syllableCount - 1;
   }
 
-  return syllableCount >= 2 && tonicIndex === syllableCount - 2;
+  return syllableCount < 2 ? undefined : syllableCount - 2;
 }
 
 function normalizePhenomena(value: unknown): readonly string[] | undefined {
@@ -256,34 +332,38 @@ function normalizePhenomena(value: unknown): readonly string[] | undefined {
 
 function normalizePhenomenon(value: unknown): string | undefined {
   if (typeof value === "string") {
-    return value;
+    return normalizeNonBlankString(value);
   }
 
   if (!isRecord(value)) {
     return undefined;
   }
 
-  for (const key of ["value", "text", "form", "sequence", "letters"]) {
+  for (const key of ["composite", "value", "text", "form", "sequence", "letters"]) {
     const candidate = value[key];
 
     if (typeof candidate === "string") {
-      return candidate;
+      return normalizeNonBlankString(candidate);
     }
   }
 
   const vowels = value.vowels;
 
   if (Array.isArray(vowels) && vowels.every((item) => typeof item === "string")) {
-    return vowels.join("");
+    return normalizeNonBlankString(vowels.join(""));
   }
 
   const stringified = value.toString();
 
-  return stringified === "[object Object]" ? undefined : stringified;
+  return stringified === "[object Object]" ? undefined : normalizeNonBlankString(stringified);
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
+}
+
+function normalizeNonBlankString(value: string): string | undefined {
+  return value.trim().length === 0 ? undefined : value;
 }
 
 export function createWeiweiSilabacionWordAnalyzer(

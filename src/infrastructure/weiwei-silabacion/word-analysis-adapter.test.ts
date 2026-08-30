@@ -118,8 +118,68 @@ test("normalizes dependency failures as untrusted results without invented sylla
   });
 });
 
+test("normalizes package-shaped syllables, numeric stress and composite phenomena", () => {
+  const packageShapedWord: WeiweiSilabacionWordLike = {
+    syllables: [
+      { onset: "f", nucleus: "ue", coda: "" },
+      { onset: "g", nucleus: "o", coda: "" },
+    ],
+    stress: 2,
+    tonic: { onset: "f", nucleus: "ue", coda: "" },
+    hiatuses: [],
+    diphthongs: [{ syllableIndex: 0, type: 0, composite: "ue" }],
+    triphthongs: [],
+  };
+  const analyzer = createWeiweiSilabacionWordAnalyzer({
+    createWord: () => packageShapedWord,
+  });
+
+  assert.deepEqual(analyzer.analyze("fuego"), {
+    ok: true,
+    form: "fuego",
+    syllables: ["fue", "go"],
+    stressedSyllableIndex: 0,
+    stressKind: "llana",
+    phenomena: {
+      diphthongs: ["ue"],
+      hiatuses: [],
+      triphthongs: [],
+    },
+    versions,
+  });
+});
+
 test("rejects esdrújulas as unsupported instead of returning trusted analysis", () => {
   const analyzer = createWeiweiSilabacionWordAnalyzer();
+  const result = analyzer.analyze("murciélago");
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assertUntrusted(result, {
+    form: "murciélago",
+    code: "UNSUPPORTED_STRESS_KIND",
+  });
+});
+
+test("rejects numeric esdrújula stress enum values as unsupported", () => {
+  const unsupportedWord: WeiweiSilabacionWordLike = {
+    syllables: [
+      { onset: "m", nucleus: "u", coda: "r" },
+      { onset: "c", nucleus: "ié", coda: "" },
+      { onset: "l", nucleus: "a", coda: "" },
+      { onset: "g", nucleus: "o", coda: "" },
+    ],
+    stress: 3,
+    tonic: { onset: "c", nucleus: "ié", coda: "" },
+    hiatuses: [],
+    diphthongs: [{ syllableIndex: 1, type: 0, composite: "ié" }],
+    triphthongs: [],
+  };
+  const analyzer = createWeiweiSilabacionWordAnalyzer({
+    createWord: () => unsupportedWord,
+  });
+
   const result = analyzer.analyze("murciélago");
 
   assert.equal(result.ok, false);
@@ -142,6 +202,30 @@ test("rejects inconsistent dependency output instead of trusting it", () => {
   };
   const analyzer = createWeiweiSilabacionWordAnalyzer({
     createWord: () => inconsistentWord,
+  });
+
+  const result = analyzer.analyze("casa");
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assertUntrusted(result, {
+    form: "casa",
+    code: "INCONSISTENT_RESULT",
+  });
+});
+
+test("rejects blank syllables instead of trusting whitespace as analysis", () => {
+  const blankSyllableWord: WeiweiSilabacionWordLike = {
+    syllables: [" ", "sa"],
+    stress: "llana",
+    tonic: 0,
+    hiatuses: [],
+    diphthongs: [],
+    triphthongs: [],
+  };
+  const analyzer = createWeiweiSilabacionWordAnalyzer({
+    createWord: () => blankSyllableWord,
   });
 
   const result = analyzer.analyze("casa");
