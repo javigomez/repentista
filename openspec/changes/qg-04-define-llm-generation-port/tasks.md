@@ -1,6 +1,6 @@
 ## 1. Specify behavior first
 
-- [ ] 1.1 Add failing contract tests for schema-valid success, invalid structured output and normalized provenance.
+- [x] 1.1 Add failing contract tests for schema-valid success, invalid structured output and normalized provenance.
 - [ ] 1.2 Add failing tests for timeout, cancellation, authentication, rate limit, rejection and unavailable errors.
 
 ## 2. Implement the port and fake
