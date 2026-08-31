@@ -5,9 +5,9 @@
 
 ## 2. Implement planning
 
-- [ ] 2.1 Define the plan DTO/value objects and output validator, verifying invalid LLM data cannot create a plan.
-- [ ] 2.2 Implement the application planner and versioned prompt, verifying exactly one state operation is requested per call.
+- [x] 2.1 Define the plan DTO/value objects and output validator, verifying invalid LLM data cannot create a plan.
+- [x] 2.2 Implement the application planner and versioned prompt, verifying exactly one state operation is requested per call.
 
 ## 3. Verify
 
-- [ ] 3.1 Run `npm test` and `npm run build`, verifying planning remains independent of concrete providers.
+- [x] 3.1 Run `npm test` and `npm run build`, verifying planning remains independent of concrete providers.
