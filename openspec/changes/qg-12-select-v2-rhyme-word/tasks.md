@@ -5,7 +5,7 @@
 
 ## 2. Implement selection
 
-- [ ] 2.1 Implement catalog-based pair filtering with full exclusion diagnostics, verifying only approved V2 words survive.
+- [x] 2.1 Implement catalog-based pair filtering with full exclusion diagnostics, verifying only approved V2 words survive.
 - [ ] 2.2 Implement LLM ordering by stable IDs and typed failure, verifying it never writes a verse or expands the list.
 
 ## 3. Verify
