@@ -5,9 +5,9 @@
 
 ## 2. Implement the adapter
 
-- [ ] 2.1 Implement DTO/schema parsing and translation through domain factories, verifying no partial snapshot is exposed.
-- [ ] 2.2 Implement filesystem/text-reader injection and fixture snapshots, verifying tests use controlled temporary data.
+- [x] 2.1 Implement DTO/schema parsing and translation through domain factories, verifying no partial snapshot is exposed.
+- [x] 2.2 Implement filesystem/text-reader injection and fixture snapshots, verifying tests use controlled temporary data.
 
 ## 3. Verify
 
-- [ ] 3.1 Run `npm test` and `npm run build`, verifying JSON diagnostics and ESM imports are stable.
+- [x] 3.1 Run `npm test` and `npm run build`, verifying JSON diagnostics and ESM imports are stable.
