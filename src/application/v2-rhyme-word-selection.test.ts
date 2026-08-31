@@ -87,6 +87,38 @@ const semanticOrdering = (
   },
 });
 
+const failedSemanticOrdering = (): V2RhymeWordSelectionRequest["semanticOrdering"] => ({
+  generator: new FixtureStructuredLlmGenerator([
+    {
+      operation: "select-v2-rhyme-word",
+      provider: "fixture-provider",
+      model: "fixture-structured-v1",
+      providerRequestId: "fixture-v2-rhyme-word-timeout",
+      completedAt: "2026-08-31T14:31:00.000Z",
+      durationMs: 1_000,
+      error: {
+        code: "TIMEOUT",
+        message: "Structured LLM operation timed out after 1000 ms.",
+        retryable: true,
+      },
+    },
+  ]),
+  prompt: {
+    id: "generation.v2-rhyme-word-selection",
+    version: "0.1.0",
+    messages: [
+      {
+        role: "system",
+        content: "Ordena solo IDs de candidatas aprobadas para V2.",
+      },
+    ],
+  },
+  limits: {
+    timeoutMs: 1_000,
+    maxOutputTokens: 400,
+  },
+});
+
 const baseSelectionRequest = (
   overrides: Partial<V2RhymeWordSelectionRequest> = {},
 ): V2RhymeWordSelectionRequest => ({
@@ -305,6 +337,74 @@ test("rejects an invented LLM candidate ID without adding a dictionary entry", a
     result.error.exclusions.map((exclusion) => exclusion.candidate.id),
     [],
   );
+});
+
+test("rejects extra ordered candidate IDs without expanding alternatives", async () => {
+  const result = await selectV2RhymeWord(
+    baseSelectionRequest({
+      candidates: [
+        baseCandidate({ id: "word-juego", form: "juego", lemma: "juego" }),
+        baseCandidate({ id: "word-ruego", form: "ruego", lemma: "ruego" }),
+      ],
+      semanticOrdering: semanticOrdering({
+        selectedCandidateId: "word-juego",
+        orderedCandidateIds: ["word-juego", "word-bruego", "word-ruego"],
+        reason: "La respuesta mezcla una candidata viable con un ID inventado.",
+      }),
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "LLM_SELECTED_OUT_OF_LIST_CANDIDATE");
+  assert.equal(result.error.selectedCandidateId, "word-bruego");
+  assert.deepEqual(result.error.allowedCandidateIds, ["word-juego", "word-ruego"]);
+});
+
+test("rejects structured LLM output that writes verse text", async () => {
+  const result = await selectV2RhymeWord(
+    baseSelectionRequest({
+      candidates: [baseCandidate({ id: "word-juego", form: "juego", lemma: "juego" })],
+      semanticOrdering: semanticOrdering({
+        selectedCandidateId: "word-juego",
+        orderedCandidateIds: ["word-juego"],
+        reason: "Prepara el remate sin ampliar la lista.",
+        verseText: "Traigo fuego por juego",
+      }),
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "LLM_ORDERING_FAILED");
+  assert.equal(result.error.cause.code, "INVALID_STRUCTURED_OUTPUT");
+  if (result.error.cause.code !== "INVALID_STRUCTURED_OUTPUT") return;
+
+  assert.deepEqual(result.error.cause.validationIssues, [
+    {
+      path: "$.verseText",
+      message: "Unexpected field; expected only stable candidate IDs and reason.",
+    },
+  ]);
+});
+
+test("returns a typed ordering failure when the LLM provider fails", async () => {
+  const result = await selectV2RhymeWord(
+    baseSelectionRequest({
+      candidates: [baseCandidate({ id: "word-juego", form: "juego", lemma: "juego" })],
+      semanticOrdering: failedSemanticOrdering(),
+    }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "LLM_ORDERING_FAILED");
+  assert.equal(result.error.cause.code, "TIMEOUT");
+  assert.equal(result.error.cause.retryable, true);
+  assert.deepEqual(result.error.exclusions, []);
 });
 
 test("fails the branch without asking the LLM when no approved V2 pair survives filters", async () => {

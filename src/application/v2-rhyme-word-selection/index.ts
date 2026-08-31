@@ -3,6 +3,7 @@ import type {
   StructuredLlmGenerationPort,
   StructuredLlmGenerationProvenance,
   StructuredLlmLimits,
+  StructuredLlmOutputSchema,
   StructuredLlmPrompt,
   StructuredLlmUsage,
 } from "../../ports/structured-llm-generation/index.js";
@@ -87,8 +88,7 @@ export interface V2RhymeWordSelection {
 export type V2RhymeWordSelectionFailureCode =
   | "NO_VIABLE_V2_RHYME_WORD"
   | "LLM_SELECTED_OUT_OF_LIST_CANDIDATE"
-  | "LLM_ORDERING_FAILED"
-  | "V2_RHYME_WORD_SELECTION_NOT_IMPLEMENTED";
+  | "LLM_ORDERING_FAILED";
 
 export type V2RhymeWordSelectionFailure =
   | {
@@ -110,15 +110,135 @@ export type V2RhymeWordSelectionFailure =
       readonly message: string;
       readonly cause: StructuredLlmGenerationError;
       readonly exclusions: readonly V2RhymeWordExclusion[];
-    }
-  | {
-      readonly code: "V2_RHYME_WORD_SELECTION_NOT_IMPLEMENTED";
-      readonly message: string;
     };
 
 export type V2RhymeWordSelectionResult =
   | { readonly ok: true; readonly value: V2RhymeWordSelection }
   | { readonly ok: false; readonly error: V2RhymeWordSelectionFailure };
+
+interface V2RhymeWordOrderingOutput {
+  readonly selectedCandidateId: string;
+  readonly orderedCandidateIds: readonly string[];
+  readonly reason: string;
+}
+
+interface V2RhymeWordOrderingCandidateInput {
+  readonly id: string;
+  readonly form: string;
+  readonly lemma: string;
+  readonly category: string;
+  readonly morphology: V2RhymeWordMorphology;
+  readonly semanticTags: readonly string[];
+}
+
+interface V2RhymeWordOrderingInput {
+  readonly v4FinalWord: V2RhymeWordOrderingCandidateInput;
+  readonly consonantFamily: string;
+  readonly requiredRole: V2RhymeWordRole;
+  readonly candidates: readonly V2RhymeWordOrderingCandidateInput[];
+}
+
+const v2RhymeWordOrderingSchema: StructuredLlmOutputSchema<V2RhymeWordOrderingOutput> =
+  Object.freeze({
+    name: "v2-rhyme-word-ordering",
+    version: "0.1.0",
+    validate(value: unknown) {
+      if (!isRecord(value)) {
+        return {
+          ok: false as const,
+          issues: [{ path: "$", message: "Expected an object." }],
+        };
+      }
+
+      const issues: { readonly path: string; readonly message: string }[] = [];
+      const allowedFields = new Set([
+        "selectedCandidateId",
+        "orderedCandidateIds",
+        "reason",
+      ]);
+
+      for (const field of Object.keys(value)) {
+        if (!allowedFields.has(field)) {
+          issues.push({
+            path: `$.${field}`,
+            message: "Unexpected field; expected only stable candidate IDs and reason.",
+          });
+        }
+      }
+
+      const selectedCandidateId =
+        typeof value.selectedCandidateId === "string"
+          ? value.selectedCandidateId.trim()
+          : undefined;
+
+      if (selectedCandidateId === undefined || selectedCandidateId.length === 0) {
+        issues.push({
+          path: "$.selectedCandidateId",
+          message: "Expected a non-empty candidate ID string.",
+        });
+      }
+
+      const orderedCandidateIds: string[] = [];
+
+      if (!Array.isArray(value.orderedCandidateIds)) {
+        issues.push({
+          path: "$.orderedCandidateIds",
+          message: "Expected an array of candidate ID strings.",
+        });
+      } else {
+        const seenOrderedCandidateIds = new Set<string>();
+
+        value.orderedCandidateIds.forEach((candidateId, index) => {
+          const normalizedCandidateId =
+            typeof candidateId === "string" ? candidateId.trim() : undefined;
+
+          if (normalizedCandidateId === undefined || normalizedCandidateId.length === 0) {
+            issues.push({
+              path: `$.orderedCandidateIds[${index}]`,
+              message: "Expected a non-empty candidate ID string.",
+            });
+            return;
+          }
+
+          if (seenOrderedCandidateIds.has(normalizedCandidateId)) {
+            issues.push({
+              path: `$.orderedCandidateIds[${index}]`,
+              message: "Candidate ID must not be repeated.",
+            });
+            return;
+          }
+
+          orderedCandidateIds.push(normalizedCandidateId);
+          seenOrderedCandidateIds.add(normalizedCandidateId);
+        });
+      }
+
+      const reason = typeof value.reason === "string" ? value.reason.trim() : undefined;
+
+      if (reason === undefined || reason.length === 0) {
+        issues.push({
+          path: "$.reason",
+          message: "Expected a non-empty semantic ordering reason.",
+        });
+      }
+
+      if (issues.length > 0 || selectedCandidateId === undefined || reason === undefined) {
+        return {
+          ok: false as const,
+          issues: Object.freeze([...issues]),
+        };
+      }
+
+      return {
+        ok: true as const,
+        value: Object.freeze({
+          selectedCandidateId,
+          orderedCandidateIds: Object.freeze([...orderedCandidateIds]),
+          reason,
+        }),
+      };
+    },
+  });
 
 const exclusionReason = (
   code: V2RhymeWordExclusionCode,
@@ -229,6 +349,83 @@ export function filterV2RhymeWordCandidates(
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function toOrderingCandidateInput(
+  candidate: V2RhymeWordCandidate,
+): V2RhymeWordOrderingCandidateInput {
+  return Object.freeze({
+    id: candidate.id,
+    form: candidate.form,
+    lemma: candidate.lemma,
+    category: candidate.category,
+    morphology: candidate.morphology,
+    semanticTags: Object.freeze([...candidate.semanticTags]),
+  });
+}
+
+function createSemanticOrderingInput(
+  request: V2RhymeWordSelectionRequest,
+  viableCandidates: readonly V2RhymeWordCandidate[],
+): V2RhymeWordOrderingInput {
+  return Object.freeze({
+    v4FinalWord: toOrderingCandidateInput(request.v4FinalWord),
+    consonantFamily: request.v4FinalWord.consonantFamily,
+    requiredRole: request.requiredRole,
+    candidates: Object.freeze(viableCandidates.map(toOrderingCandidateInput)),
+  });
+}
+
+function findOutOfListCandidateId(
+  ordering: V2RhymeWordOrderingOutput,
+  allowedCandidateIds: ReadonlySet<string>,
+): string | undefined {
+  const returnedCandidateIds = [
+    ordering.selectedCandidateId,
+    ...ordering.orderedCandidateIds,
+  ];
+
+  return returnedCandidateIds.find((candidateId) => !allowedCandidateIds.has(candidateId));
+}
+
+function orderViableCandidates(
+  viableCandidates: readonly V2RhymeWordCandidate[],
+  ordering: V2RhymeWordOrderingOutput,
+): readonly V2RhymeWordCandidate[] {
+  const candidatesById = new Map(
+    viableCandidates.map((candidate) => [candidate.id, candidate] as const),
+  );
+  const orderedCandidates: V2RhymeWordCandidate[] = [];
+  const usedCandidateIds = new Set<string>();
+
+  for (const candidateId of [
+    ordering.selectedCandidateId,
+    ...ordering.orderedCandidateIds,
+  ]) {
+    const candidate = candidatesById.get(candidateId);
+
+    if (candidate === undefined || usedCandidateIds.has(candidate.id)) {
+      continue;
+    }
+
+    orderedCandidates.push(candidate);
+    usedCandidateIds.add(candidate.id);
+  }
+
+  for (const candidate of viableCandidates) {
+    if (usedCandidateIds.has(candidate.id)) {
+      continue;
+    }
+
+    orderedCandidates.push(candidate);
+    usedCandidateIds.add(candidate.id);
+  }
+
+  return Object.freeze([...orderedCandidates]);
+}
+
 export async function selectV2RhymeWord(
   request: V2RhymeWordSelectionRequest,
 ): Promise<V2RhymeWordSelectionResult> {
@@ -246,11 +443,82 @@ export async function selectV2RhymeWord(
     });
   }
 
+  const orderingResult = await request.semanticOrdering.generator.generate({
+    operation: "select-v2-rhyme-word",
+    prompt: request.semanticOrdering.prompt,
+    input: createSemanticOrderingInput(request, filtering.viableCandidates),
+    outputSchema: v2RhymeWordOrderingSchema,
+    limits: request.semanticOrdering.limits,
+  });
+
+  if (!orderingResult.ok) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "LLM_ORDERING_FAILED" as const,
+        message: "The structured LLM could not order approved V2 rhyme word candidates.",
+        cause: orderingResult.error,
+        exclusions: filtering.exclusions,
+      }),
+    });
+  }
+
+  const allowedCandidatesById = new Map(
+    filtering.viableCandidates.map((candidate) => [candidate.id, candidate] as const),
+  );
+  const allowedCandidateIds = new Set(allowedCandidatesById.keys());
+  const outOfListCandidateId = findOutOfListCandidateId(
+    orderingResult.value.data,
+    allowedCandidateIds,
+  );
+
+  if (outOfListCandidateId !== undefined) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "LLM_SELECTED_OUT_OF_LIST_CANDIDATE" as const,
+        message: "The structured LLM selected or ordered a candidate outside the closed V2 list.",
+        selectedCandidateId: outOfListCandidateId,
+        allowedCandidateIds: Object.freeze([...allowedCandidateIds]),
+        exclusions: filtering.exclusions,
+        provenance: orderingResult.value.provenance,
+      }),
+    });
+  }
+
+  const selected = allowedCandidatesById.get(orderingResult.value.data.selectedCandidateId);
+
+  if (selected === undefined) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "LLM_SELECTED_OUT_OF_LIST_CANDIDATE" as const,
+        message: "The structured LLM selected a candidate outside the closed V2 list.",
+        selectedCandidateId: orderingResult.value.data.selectedCandidateId,
+        allowedCandidateIds: Object.freeze([...allowedCandidateIds]),
+        exclusions: filtering.exclusions,
+        provenance: orderingResult.value.provenance,
+      }),
+    });
+  }
+
+  const orderedCandidates = orderViableCandidates(
+    filtering.viableCandidates,
+    orderingResult.value.data,
+  );
+  const alternatives = orderedCandidates.filter((candidate) => candidate.id !== selected.id);
+
   return Object.freeze({
-    ok: false as const,
-    error: Object.freeze({
-      code: "V2_RHYME_WORD_SELECTION_NOT_IMPLEMENTED" as const,
-      message: "V2 rhyme word selection is not implemented yet.",
+    ok: true as const,
+    value: Object.freeze({
+      selected,
+      consonantFamily: selected.consonantFamily,
+      category: selected.category,
+      reason: orderingResult.value.data.reason,
+      alternatives: Object.freeze([...alternatives]),
+      exclusions: filtering.exclusions,
+      provenance: orderingResult.value.provenance,
+      usage: orderingResult.value.usage,
     }),
   });
 }
