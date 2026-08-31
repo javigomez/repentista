@@ -74,6 +74,7 @@ export interface V4FinalWordSelectionFailure {
   readonly message: string;
   readonly dictionaryVersion: string;
   readonly candidates: readonly V4FinalWordCandidateOption[];
+  readonly selectedCandidateId?: string;
   readonly appliedFilters?: readonly V4FinalWordAppliedFilter[];
   readonly exclusions?: readonly V4FinalWordCandidateExclusion[];
 }
@@ -162,18 +163,73 @@ export async function selectV4FinalWord(
     });
   }
 
+  const prioritized = prioritization.value.data;
+  const candidatesById = new Map(
+    filtered.candidates.map((candidate) => [candidate.id, candidate] as const),
+  );
+  const selectedCandidateId = prioritized.selectedCandidateId.trim();
+  const selected = candidatesById.get(selectedCandidateId);
+
+  if (selected === undefined) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "SELECTED_CANDIDATE_NOT_OFFERED" as const,
+        message: "La candidata seleccionada no estaba en la lista cerrada ofrecida.",
+        dictionaryVersion: request.dictionaryVersion,
+        candidates: filtered.candidates,
+        selectedCandidateId,
+        appliedFilters: APPLIED_FILTERS,
+        exclusions: filtered.exclusions,
+      }),
+    });
+  }
+
+  const rankedReasons = prioritized.ranking.map((reason) =>
+    Object.freeze({
+      candidateId: reason.candidateId.trim(),
+      reason: reason.reason.trim(),
+    }),
+  );
+  const alternatives = collectRankedAlternatives(rankedReasons, candidatesById, selected.id);
+  const reasons = rankedReasons.filter((reason) => candidatesById.has(reason.candidateId));
+
   return Object.freeze({
-    ok: false as const,
-    error: Object.freeze({
-      code: "PRIORITIZATION_FAILED" as const,
-      message: "V4 final word prioritization acceptance is not implemented yet.",
+    ok: true as const,
+    value: Object.freeze({
+      selected,
+      alternatives: freezeArray(alternatives),
+      reasons: freezeArray(reasons),
       dictionaryVersion: request.dictionaryVersion,
-      candidates: filtered.candidates,
-      appliedFilters: APPLIED_FILTERS,
-      exclusions: filtered.exclusions,
     }),
   });
 }
+
+const collectRankedAlternatives = (
+  reasons: readonly V4FinalWordSelectionReason[],
+  candidatesById: ReadonlyMap<string, V4FinalWordCandidateOption>,
+  selectedCandidateId: string,
+): readonly V4FinalWordCandidateOption[] => {
+  const alternatives: V4FinalWordCandidateOption[] = [];
+  const seenCandidateIds = new Set<string>([selectedCandidateId]);
+
+  for (const reason of reasons) {
+    if (seenCandidateIds.has(reason.candidateId)) {
+      continue;
+    }
+
+    const candidate = candidatesById.get(reason.candidateId);
+
+    if (candidate === undefined) {
+      continue;
+    }
+
+    alternatives.push(candidate);
+    seenCandidateIds.add(candidate.id);
+  }
+
+  return freezeArray(alternatives);
+};
 
 interface FilteredV4FinalWordCandidates {
   readonly candidates: readonly V4FinalWordCandidateOption[];

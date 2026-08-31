@@ -221,6 +221,44 @@ test("accepts a selected candidate ID from the closed list and preserves ranked 
   assert.equal(result.value.dictionaryVersion, dictionaryVersion);
 });
 
+test("orders alternatives by the prioritizer ranking instead of dictionary input order", async () => {
+  const prioritizer = new CapturingV4FinalWordPrioritizer({
+    selectedCandidateId: "word:dragon",
+    ranking: [
+      { candidateId: "word:dragon", reason: "Es el remate principal del humo elegante." },
+      { candidateId: "word:tejon", reason: "Sirve como regreso absurdo si falla la rima." },
+      { candidateId: "word:boton", reason: "Mantiene una salida de objeto cotidiano." },
+    ],
+  });
+
+  const result = await selectV4FinalWord(
+    selectionRequest([
+      finalWordCandidate({
+        id: "word:boton",
+        word: "botón",
+        lemma: "botón",
+        semanticTags: ["dragon", "humo", "confusion", "objeto"],
+      }),
+      finalWordCandidate(),
+      finalWordCandidate({
+        id: "word:tejon",
+        word: "tejón",
+        lemma: "tejón",
+        semanticTags: ["dragon", "humo", "confusion", "animal"],
+      }),
+    ]),
+    { prioritizer },
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.deepEqual(
+    result.value.alternatives.map((candidate) => candidate.id),
+    ["word:tejon", "word:boton"],
+  );
+});
+
 test("rejects an invented final word selected outside the offered candidate IDs", async () => {
   const prioritizer = new CapturingV4FinalWordPrioritizer({
     selectedCandidateId: "word:unicornio",
