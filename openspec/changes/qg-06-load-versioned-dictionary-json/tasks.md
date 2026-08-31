@@ -1,6 +1,6 @@
 ## 1. Specify behavior first
 
-- [ ] 1.1 Add failing adapter tests for valid manifest/snapshot loading and exact version selection.
+- [x] 1.1 Add failing adapter tests for valid manifest/snapshot loading and exact version selection.
 - [ ] 1.2 Add failing tests for missing files, malformed JSON, duplicate versions, schema errors and atomic rejection of one bad entry.
 
 ## 2. Implement the adapter
