@@ -1,7 +1,7 @@
 ## 1. Specify behavior first
 
 - [x] 1.1 Add failing tests for consonant-family, role, category and morphological-policy filtering.
-- [ ] 1.2 Add failing tests for assonant/out-of-list choices, no viable pair and deterministic alternatives.
+- [x] 1.2 Add failing tests for assonant/out-of-list choices, no viable pair and deterministic alternatives.
 
 ## 2. Implement selection
 
