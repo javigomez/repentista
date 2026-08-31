@@ -27,6 +27,7 @@ test("the current source tree respects its layer directions", async () => {
     "src/domain/generation-brief/index.ts",
     "src/application/index.ts",
     "src/ports/index.ts",
+    "src/ports/structured-llm-generation/index.ts",
     "src/infrastructure/index.ts",
   ];
 
