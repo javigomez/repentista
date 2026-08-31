@@ -13,6 +13,9 @@
     "dev": "tsx src/infrastructure/cli/entrypoint.ts",
     "start": "node dist/infrastructure/cli/entrypoint.js"
   },
+  "dependencies": {
+    "silabacion": "0.5.2"
+  },
   "devDependencies": {
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
