@@ -9,7 +9,7 @@
     "lint:branch": "node .openspec-shipper/scripts/validate-branch-name.mjs",
     "lint:commits": "commitlint --from origin/$(git branch --show-current) --to HEAD",
     "build": "tsc",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "node --import tsx --test $(find src -name '*.test.ts' -print)",
     "dev": "tsx src/infrastructure/cli/entrypoint.ts",
     "start": "node dist/infrastructure/cli/entrypoint.js"
   },

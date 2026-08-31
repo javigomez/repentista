@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   buildApprovedConsonantRhymeCatalog,
+  createApprovedConsonantRhymeFamily,
+  createConsonantPhoneticTail,
+  INITIAL_CONSONANT_RHYME_DIALECT_POLICY,
   type ApprovedConsonantRhymeEntry,
 } from "./approved-consonant-rhyme-catalog/index.js";
 
@@ -42,6 +45,30 @@ const goldEntries = Object.freeze([
   entry("rima", "noun", "ima"),
   entry("encina", "noun", "ina"),
 ] satisfies readonly ApprovedConsonantRhymeEntry[]);
+
+test("compares phonetic tails and families by stable normalized value and policy version", () => {
+  const accentedTail = createConsonantPhoneticTail("-Ón");
+  const plainTail = createConsonantPhoneticTail("on");
+
+  assert.equal(accentedTail.value, "on");
+  assert.equal(accentedTail.policyVersion, INITIAL_CONSONANT_RHYME_DIALECT_POLICY.version);
+  assert.equal(accentedTail.equals(plainTail), true);
+
+  const firstFamily = createApprovedConsonantRhymeFamily({
+    dictionaryVersion: "gold-2026-08-30",
+    tail: accentedTail,
+    words: [entry("dragón", "noun", "ón")],
+  });
+  const secondFamily = createApprovedConsonantRhymeFamily({
+    dictionaryVersion: "gold-2026-08-30",
+    tail: plainTail,
+    words: [entry("dragón", "noun", "on")],
+  });
+
+  assert.equal(firstFamily.key, "spanish-consonant-rhyme/v1:gold-2026-08-30:on");
+  assert.equal(firstFamily.equals(secondFamily), true);
+  assert.equal(Object.isFrozen(firstFamily.words), true);
+});
 
 test("groups approved words by normalized consonant tail from the last stressed vowel", () => {
   const catalog = buildApprovedConsonantRhymeCatalog({
@@ -119,6 +146,25 @@ test("filters rhyme candidates by category and editorial role without mutating t
   ]);
 });
 
+test("indexes only approved entries from the dictionary snapshot", () => {
+  const catalog = buildApprovedConsonantRhymeCatalog({
+    dictionaryVersion: "gold-2026-08-30",
+    entries: [
+      entry("dragón", "noun", "ón"),
+      { ...entry("camión", "noun", "ón"), status: "pending" },
+      { ...entry("salón", "noun", "ón"), status: "rejected" },
+      entry("balcón", "noun", "ón"),
+    ],
+  });
+
+  assert.deepEqual(catalog.findFamilyByWord("dragón")?.words.map((item) => item.word), [
+    "balcón",
+    "dragón",
+  ]);
+  assert.equal(catalog.findFamilyByWord("camión"), undefined);
+  assert.deepEqual(catalog.findRhymesForWord("dragón").map((item) => item.word), ["balcón"]);
+});
+
 test("explains empty filtered results without inventing rhyme words", () => {
   const catalog = buildApprovedConsonantRhymeCatalog({
     dictionaryVersion: "gold-2026-08-30",
@@ -132,6 +178,7 @@ test("explains empty filtered results without inventing rhyme words", () => {
 
   assert.deepEqual(result.words.map((item) => item.word), []);
   assert.equal(result.explanation.code, "no-approved-rhyme-after-filters");
+  assert.ok(result.explanation.familyTail);
   assert.equal(result.explanation.familyTail.value, "on");
   assert.deepEqual(result.explanation.filters, {
     categories: ["adverb"],
