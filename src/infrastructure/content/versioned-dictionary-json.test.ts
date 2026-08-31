@@ -50,7 +50,9 @@ function createTextReader(files: ReadonlyMap<string, string>): {
       const text = files.get(logicalPath);
 
       if (text === undefined) {
-        throw new Error(`Missing fixture ${logicalPath}`);
+        throw Object.assign(new Error(`ENOENT: no such file ${logicalPath}`), {
+          code: "ENOENT",
+        });
       }
 
       return text;
@@ -172,4 +174,221 @@ test("selects the requested version exactly without exposing neighboring snapsho
       availableVersions: ["dictionary-2026-09-01"],
     },
   });
+});
+
+test("reports a typed FILE_NOT_FOUND error when the manifest file is missing", async () => {
+  const reader = createTextReader(new Map());
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "FILE_NOT_FOUND");
+  assert.equal(result.error.logicalPath, manifestPath);
+});
+
+test("reports a typed FILE_NOT_FOUND error when the selected snapshot file is missing", async () => {
+  const reader = createTextReader(
+    new Map([
+      [
+        manifestPath,
+        encodeJson(
+          manifest([
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30.json" },
+          ]),
+        ),
+      ],
+    ]),
+  );
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "FILE_NOT_FOUND");
+  assert.equal(result.error.logicalPath, "data/dictionary/dictionary-2026-08-30.json");
+});
+
+test("reports a typed FILE_NOT_FOUND error when the requested version is absent from the manifest", async () => {
+  const reader = createTextReader(
+    new Map([
+      [
+        manifestPath,
+        encodeJson(
+          manifest([
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30.json" },
+          ]),
+        ),
+      ],
+    ]),
+  );
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-09-01" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "FILE_NOT_FOUND");
+  assert.equal(result.error.version, "dictionary-2026-09-01");
+});
+
+test("reports a typed INVALID_JSON error when the manifest is malformed", async () => {
+  const reader = createTextReader(new Map([[manifestPath, "{ not valid json"]]));
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "INVALID_JSON");
+  assert.equal(result.error.logicalPath, manifestPath);
+});
+
+test("reports a typed INVALID_JSON error when the selected snapshot is malformed", async () => {
+  const reader = createTextReader(
+    new Map([
+      [
+        manifestPath,
+        encodeJson(
+          manifest([
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30.json" },
+          ]),
+        ),
+      ],
+      ["data/dictionary/dictionary-2026-08-30.json", "[ broken json"],
+    ]),
+  );
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "INVALID_JSON");
+  assert.equal(result.error.logicalPath, "data/dictionary/dictionary-2026-08-30.json");
+});
+
+test("reports a typed DUPLICATE_VERSION error when the manifest repeats a version", async () => {
+  const reader = createTextReader(
+    new Map([
+      [
+        manifestPath,
+        encodeJson(
+          manifest([
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30.json" },
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30-copy.json" },
+          ]),
+        ),
+      ],
+      [
+        "data/dictionary/dictionary-2026-08-30.json",
+        encodeJson(snapshot("dictionary-2026-08-30", [dictionaryEntry()])),
+      ],
+    ]),
+  );
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "DUPLICATE_VERSION");
+  assert.equal(result.error.version, "dictionary-2026-08-30");
+});
+
+test("reports a typed SCHEMA_VIOLATION error when the manifest format version is unsupported", async () => {
+  const reader = createTextReader(
+    new Map([
+      [
+        manifestPath,
+        encodeJson({
+          formatVersion: 99,
+          snapshots: [
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30.json" },
+          ],
+        }),
+      ],
+    ]),
+  );
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "SCHEMA_VIOLATION");
+  assert.equal(result.error.logicalPath, manifestPath);
+});
+
+test("reports a typed SCHEMA_VIOLATION error when a snapshot omits the entries array", async () => {
+  const reader = createTextReader(
+    new Map([
+      [
+        manifestPath,
+        encodeJson(
+          manifest([
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30.json" },
+          ]),
+        ),
+      ],
+      [
+        "data/dictionary/dictionary-2026-08-30.json",
+        encodeJson({ formatVersion: 1, version: "dictionary-2026-08-30" }),
+      ],
+    ]),
+  );
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "SCHEMA_VIOLATION");
+  assert.equal(result.error.logicalPath, "data/dictionary/dictionary-2026-08-30.json");
+});
+
+test("rejects the whole snapshot atomically and reports index, field and code when one entry is invalid", async () => {
+  const reader = createTextReader(
+    new Map([
+      [
+        manifestPath,
+        encodeJson(
+          manifest([
+            { version: "dictionary-2026-08-30", path: "dictionary-2026-08-30.json" },
+          ]),
+        ),
+      ],
+      [
+        "data/dictionary/dictionary-2026-08-30.json",
+        encodeJson(
+          snapshot("dictionary-2026-08-30", [
+            dictionaryEntry(),
+            dictionaryEntry({ form: "balcón", lemma: "balcón", tonicity: "esdrujula" }),
+          ]),
+        ),
+      ],
+    ]),
+  );
+  const loader = createVersionedDictionaryJsonLoader({ readText: reader.readText });
+
+  const result = await loader.load({ manifestPath, version: "dictionary-2026-08-30" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "INVALID_ENTRY");
+  assert.deepEqual(
+    result.error.issues.map((issue) => [issue.index, issue.field, issue.code]),
+    [[1, "tonicity", "UNSUPPORTED_TONICITY"]],
+  );
 });
