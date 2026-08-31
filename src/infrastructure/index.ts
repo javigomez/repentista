@@ -1,2 +1,2 @@
 /** Public entrypoint for IO and external adapters. */
-export {};
+export * from "./content/versioned-dictionary-json.js";
