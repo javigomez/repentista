@@ -1,7 +1,7 @@
 ## 1. Specify behavior first
 
 - [x] 1.1 Add failing tests for a valid semantic plan and preservation of prompt/model provenance using the deterministic LLM fake.
-- [ ] 1.2 Add failing tests for missing fields, embedded verses, premature rhyme words and exhausted retries.
+- [x] 1.2 Add failing tests for missing fields, embedded verses, premature rhyme words and exhausted retries.
 
 ## 2. Implement planning
 
