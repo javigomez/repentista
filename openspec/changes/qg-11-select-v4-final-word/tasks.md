@@ -5,7 +5,7 @@
 
 ## 2. Implement selection
 
-- [ ] 2.1 Implement deterministic candidate filtering over dictionary/catalog, verifying every exclusion has a reason.
+- [x] 2.1 Implement deterministic candidate filtering over dictionary/catalog, verifying every exclusion has a reason.
 - [ ] 2.2 Implement LLM prioritization by candidate ID and preserve alternatives, verifying no free-text word enters the result.
 
 ## 3. Verify
