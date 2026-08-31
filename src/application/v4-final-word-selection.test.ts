@@ -20,6 +20,16 @@ interface PrioritizedFinalWord {
   }[];
 }
 
+interface V4FinalWordFailureDiagnostics {
+  readonly selectedCandidateId?: string;
+  readonly appliedFilters?: readonly string[];
+  readonly exclusions?: readonly {
+    readonly candidateId: string;
+    readonly code: string;
+    readonly reason: string;
+  }[];
+}
+
 class CapturingV4FinalWordPrioritizer implements StructuredLlmGenerationPort {
   readonly requests: StructuredLlmGenerationRequest<unknown>[] = [];
 
@@ -99,6 +109,9 @@ const selectionRequest = (
   },
   candidates,
 });
+
+const diagnosticsFor = (error: unknown): V4FinalWordFailureDiagnostics =>
+  error as V4FinalWordFailureDiagnostics;
 
 test("prioritizes only approved punchline candidates compatible with the semantic plan", async () => {
   const prioritizer = new CapturingV4FinalWordPrioritizer({
@@ -206,4 +219,113 @@ test("accepts a selected candidate ID from the closed list and preserves ranked 
     },
   ]);
   assert.equal(result.value.dictionaryVersion, dictionaryVersion);
+});
+
+test("rejects an invented final word selected outside the offered candidate IDs", async () => {
+  const prioritizer = new CapturingV4FinalWordPrioritizer({
+    selectedCandidateId: "word:unicornio",
+    ranking: [
+      {
+        candidateId: "word:unicornio",
+        reason: "El modelo inventa una palabra vistosa que no estaba en la lista.",
+      },
+      { candidateId: "word:dragon", reason: "Opcion cerrada que si estaba disponible." },
+    ],
+  });
+
+  const result = await selectV4FinalWord(
+    selectionRequest([
+      finalWordCandidate(),
+      finalWordCandidate({
+        id: "word:boton",
+        word: "botón",
+        lemma: "botón",
+        semanticTags: ["dragon", "humo", "confusion", "objeto"],
+      }),
+    ]),
+    { prioritizer },
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "SELECTED_CANDIDATE_NOT_OFFERED");
+  assert.equal(diagnosticsFor(result.error).selectedCandidateId, "word:unicornio");
+  assert.deepEqual(
+    result.error.candidates.map((candidate) => candidate.id),
+    ["word:dragon", "word:boton"],
+  );
+});
+
+test("stops before LLM prioritization when the input candidate set is empty", async () => {
+  const prioritizer = new CapturingV4FinalWordPrioritizer({
+    selectedCandidateId: "word:dragon",
+    ranking: [{ candidateId: "word:dragon", reason: "No debe consultarse sin candidatas." }],
+  });
+
+  const result = await selectV4FinalWord(selectionRequest([]), { prioritizer });
+
+  assert.equal(prioritizer.requests.length, 0);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "NO_VIABLE_FINAL_WORD");
+  assert.equal(result.error.dictionaryVersion, dictionaryVersion);
+  assert.deepEqual(result.error.candidates, []);
+  assert.deepEqual(diagnosticsFor(result.error).appliedFilters, [
+    "APPROVED_STATUS",
+    "PUNCHLINE_PERMISSION",
+    "SUPPORTED_TONICITY",
+    "VIABLE_RHYME_FAMILY",
+    "REQUIRED_SEMANTIC_TAGS",
+    "PREFERRED_CATEGORY",
+  ]);
+  assert.deepEqual(diagnosticsFor(result.error).exclusions, []);
+});
+
+test("rejects unsupported stress and candidates without a viable rhyme family with reasons", async () => {
+  const prioritizer = new CapturingV4FinalWordPrioritizer({
+    selectedCandidateId: "word:dragon",
+    ranking: [{ candidateId: "word:dragon", reason: "No debe consultarse sin candidatas viables." }],
+  });
+
+  const result = await selectV4FinalWord(
+    selectionRequest([
+      finalWordCandidate({
+        id: "word:brujula",
+        word: "brújula",
+        lemma: "brújula",
+        tonicity: "esdrujula",
+      }),
+      finalWordCandidate({
+        id: "word:solitario",
+        word: "solitario",
+        lemma: "solitario",
+        tonicity: "llana",
+        rhymeFamilyId: "family:ario",
+        rhymePartnerCount: 0,
+      }),
+    ]),
+    { prioritizer },
+  );
+
+  assert.equal(prioritizer.requests.length, 0);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error.code, "NO_VIABLE_FINAL_WORD");
+  assert.deepEqual(result.error.candidates, []);
+
+  const exclusions = diagnosticsFor(result.error).exclusions;
+  assert.deepEqual(
+    exclusions?.map((exclusion) => [exclusion.candidateId, exclusion.code]),
+    [
+      ["word:brujula", "UNSUPPORTED_TONICITY"],
+      ["word:solitario", "NO_VIABLE_RHYME_FAMILY"],
+    ],
+  );
+  assert.equal(
+    exclusions?.every((exclusion) => exclusion.reason.trim().length > 0),
+    true,
+  );
 });

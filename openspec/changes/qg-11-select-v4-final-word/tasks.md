@@ -1,7 +1,7 @@
 ## 1. Specify behavior first
 
 - [x] 1.1 Add failing tests for filtering approved remate words and accepting a selected candidate from the closed list.
-- [ ] 1.2 Add failing tests for invented selections, empty candidate sets, unsupported stress and no viable rhyme family.
+- [x] 1.2 Add failing tests for invented selections, empty candidate sets, unsupported stress and no viable rhyme family.
 
 ## 2. Implement selection
 
