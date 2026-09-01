@@ -36,6 +36,8 @@ npm run build
 
 No ocultar tests fallidos, errores de compilación ni comportamiento dudoso detrás de mocks. Para aleatoriedad, reloj, filesystem, red o modelos externos, inyectar dependencias y usar dobles deterministas en tests.
 
+En los tests, una aserción fallida debe detener el caso con un diagnóstico explícito. No uses retornos silenciosos para resolver el estrechamiento de tipos después de comprobar un resultado discriminado, por ejemplo `if (!result.ok) return;`: si el resultado debía ser exitoso, usa una aserción que falle o lanza un error explicativo. Los casos que esperan un fallo deben afirmar explícitamente el error, su código y la evidencia relevante.
+
 ## Stack y convenciones técnicas
 
 - TypeScript estricto y ESM, coherente con `package.json` y `tsconfig.json`.
