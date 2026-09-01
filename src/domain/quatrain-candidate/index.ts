@@ -193,7 +193,8 @@ export interface CandidateLifecycleEvent {
     | CandidateLifecycleTransitionInput["type"]
     | "CANDIDATE_CREATED"
     | "REPAIR_RECORDED"
-    | "PUNCHLINE_RECORDED";
+    | "PUNCHLINE_RECORDED"
+    | "NATURALNESS_RECORDED";
   readonly at: string;
   readonly validators?: readonly ComponentVersion[];
   readonly diagnostics?: readonly ValidatorDiagnosticInput[];
@@ -210,6 +211,7 @@ export interface CandidateLifecycleEvent {
   readonly packageId?: string;
   readonly contractVersion?: string;
   readonly repair?: CandidateRepairInput;
+  readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
   readonly punchlineAssessment?: PunchlineAssessmentRecord;
 }
 
@@ -321,6 +323,54 @@ export type PunchlineAssessmentRecordResult =
   | { readonly ok: true; readonly value: QuatrainCandidate }
   | { readonly ok: false; readonly error: PunchlineAssessmentError };
 
+export interface NaturalnessObservation {
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly reason: string;
+}
+
+export interface NaturalnessAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface NaturalnessAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly observations: readonly NaturalnessObservation[];
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: NaturalnessAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type NaturalnessAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_OBSERVATION";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type NaturalnessAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: NaturalnessAssessmentError };
+
 export interface CandidatePlan {
   readonly rhymeScheme: string;
   readonly metricPositions: number;
@@ -352,6 +402,7 @@ export interface QuatrainCandidate {
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
   readonly punchlineAssessment?: PunchlineAssessmentRecord;
+  readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
 }
 
 export const QUATRAIN_CANDIDATE_SNAPSHOT_VERSION = "quatrain-candidate-snapshot/v1" as const;
@@ -375,6 +426,7 @@ export interface QuatrainCandidateSnapshot {
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
   readonly punchlineAssessment?: PunchlineAssessmentRecord;
+  readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
 }
 
 export type CandidateCreationError =
@@ -574,6 +626,32 @@ const freezePunchlineAssessment = (
     providerRequestId: assessment.providerRequestId,
   });
 
+const freezeNaturalnessObservation = (
+  observation: NaturalnessObservation,
+): NaturalnessObservation =>
+  Object.freeze({
+    slot: observation.slot,
+    fragment: observation.fragment,
+    reason: observation.reason,
+  });
+
+const freezeNaturalnessAssessment = (
+  assessment: NaturalnessAssessmentRecord,
+): NaturalnessAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    observations: Object.freeze(assessment.observations.map(freezeNaturalnessObservation)),
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
 const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
   Object.freeze({
     ...event,
@@ -591,6 +669,9 @@ const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
     ...(event.punchlineAssessment === undefined
       ? {}
       : { punchlineAssessment: freezePunchlineAssessment(event.punchlineAssessment) }),
+    ...(event.naturalnessAssessment === undefined
+      ? {}
+      : { naturalnessAssessment: freezeNaturalnessAssessment(event.naturalnessAssessment) }),
   });
 
 const freezePlanSlot = (slot: CandidateVersePlanInput): CandidateVersePlanInput =>
@@ -797,6 +878,9 @@ export function toQuatrainCandidateSnapshot(
     ...(candidate.punchlineAssessment === undefined
       ? {}
       : { punchlineAssessment: freezePunchlineAssessment(candidate.punchlineAssessment) }),
+    ...(candidate.naturalnessAssessment === undefined
+      ? {}
+      : { naturalnessAssessment: freezeNaturalnessAssessment(candidate.naturalnessAssessment) }),
   });
 }
 
@@ -1044,6 +1128,71 @@ const HARD_VALIDATION_PASSED_STATES: readonly QuatrainCandidateState[] = Object.
 
 export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
   return HARD_VALIDATION_PASSED_STATES.includes(state);
+}
+
+const NATURALNESS_NOTE_MINIMUM = 0;
+const NATURALNESS_NOTE_MAXIMUM = 20;
+const NATURALNESS_CONFIDENCE_MINIMUM = 0;
+const NATURALNESS_CONFIDENCE_MAXIMUM = 1;
+
+const validateNaturalnessObservations = (
+  observations: readonly NaturalnessObservation[],
+): NaturalnessAssessmentError | undefined => {
+  const seenSlots = new Set<VerseSlot>();
+
+  for (const [index, observation] of observations.entries()) {
+    const path = `$.observations[${index}]`;
+    if (!expectedSlots.includes(observation.slot)) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} usa un slot no reconocido.`, path });
+    }
+    if (seenSlots.has(observation.slot)) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} repite el slot ${observation.slot}.`, path });
+    }
+    if (observation.fragment.trim().length === 0) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} debe citar un fragmento no vacío.`, path });
+    }
+    if (observation.reason.trim().length === 0) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} debe incluir una razón observable.`, path });
+    }
+    seenSlots.add(observation.slot);
+  }
+  return undefined;
+};
+
+export function recordNaturalnessAssessment(
+  candidate: QuatrainCandidate,
+  assessment: NaturalnessAssessmentRecord,
+): NaturalnessAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({ ok: false as const, error: Object.freeze({
+      code: "STATE_NOT_ELIGIBLE" as const,
+      message: `No se puede adjuntar una evaluación de naturalidad a un candidato en estado ${candidate.state}.`,
+      currentState: candidate.state,
+    }) });
+  }
+  if (!Number.isInteger(assessment.note) || assessment.note < NATURALNESS_NOTE_MINIMUM || assessment.note > NATURALNESS_NOTE_MAXIMUM) {
+    return Object.freeze({ ok: false as const, error: Object.freeze({
+      code: "INVALID_NOTE" as const,
+      message: `La nota debe ser un entero entre ${NATURALNESS_NOTE_MINIMUM} y ${NATURALNESS_NOTE_MAXIMUM}.`,
+      note: assessment.note,
+    }) });
+  }
+  if (!Number.isFinite(assessment.confidence) || assessment.confidence < NATURALNESS_CONFIDENCE_MINIMUM || assessment.confidence > NATURALNESS_CONFIDENCE_MAXIMUM) {
+    return Object.freeze({ ok: false as const, error: Object.freeze({
+      code: "INVALID_CONFIDENCE" as const,
+      message: `La confianza debe estar entre ${NATURALNESS_CONFIDENCE_MINIMUM} y ${NATURALNESS_CONFIDENCE_MAXIMUM}.`,
+      confidence: assessment.confidence,
+    }) });
+  }
+  const observationError = validateNaturalnessObservations(assessment.observations);
+  if (observationError !== undefined) return Object.freeze({ ok: false as const, error: observationError });
+  const frozen = freezeNaturalnessAssessment(assessment);
+  const event = freezeEvent({ type: "NATURALNESS_RECORDED", at: assessment.assessedAt, naturalnessAssessment: frozen });
+  return Object.freeze({ ok: true as const, value: candidateWith(candidate, {
+    state: candidate.state,
+    events: Object.freeze([...candidate.events, event]),
+    naturalnessAssessment: frozen,
+  }) });
 }
 
 const PUNCHLINE_NOTE_MINIMUM = 0;
