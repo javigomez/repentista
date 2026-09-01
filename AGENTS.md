@@ -38,6 +38,13 @@ No ocultar tests fallidos, errores de compilación ni comportamiento dudoso detr
 
 En los tests, una aserción fallida debe detener el caso con un diagnóstico explícito. No uses retornos silenciosos para resolver el estrechamiento de tipos después de comprobar un resultado discriminado, por ejemplo `if (!result.ok) return;`: si el resultado debía ser exitoso, usa una aserción que falle o lanza un error explicativo. Los casos que esperan un fallo deben afirmar explícitamente el error, su código y la evidencia relevante.
 
+### Organización obligatoria de tests y fixtures
+
+- Cuando un módulo de dominio acumule comportamientos independientes, separar sus tests por responsabilidad en ficheros `*.test.ts` junto al módulo. Un fichero de test debe cubrir una capacidad coherente —por ejemplo, ciclo de vida, snapshots o una evaluación— y no convertirse en un segundo índice monolítico.
+- Usar `describe` anidados para expresar el contexto y la categoría del comportamiento, y `it` para cada caso verificable. Los nombres deben explicar el comportamiento observado, no la implementación interna.
+- Mantener los datos repetidos en `test-fixtures.ts` o en fixtures específicos de la capacidad. Cada constructor de fixture debe devolver datos nuevos y deterministas por defecto; sus overrides deben ser explícitos y no compartir arrays u objetos mutables entre casos.
+- Los tests que esperan éxito deben fallar de forma explícita si reciben un resultado fallido. Los tests que esperan errores deben comprobar el error concreto; no usar `return` o `continue` para ocultar una aserción que no se ha cumplido.
+
 ## Stack y convenciones técnicas
 
 - TypeScript estricto y ESM, coherente con `package.json` y `tsconfig.json`.
@@ -73,6 +80,8 @@ src/
 ```
 
 La estructura puede evolucionar si mejora la separación de responsabilidades, pero no mezclar reglas lingüísticas con parsing de CLI ni con persistencia. `src/index.ts` debe limitarse a ser un punto de entrada; la lógica debe vivir en módulos testeables.
+
+Los módulos de aplicación deben importarse desde la ruta concreta de su capacidad (por ejemplo, `src/application/<capacidad>/index.ts`). `src/application/index.ts` es un barrel público estable: no debe ser una lista de trabajo que cada feature branch tenga que editar. Las nuevas capacidades deben poder probarse e integrarse sin añadir imports a ese índice común; si se necesita ampliar la API pública, hacerlo en un cambio dedicado y mantener los consumidores internos con imports directos.
 
 ## Reglas de producto que son obligatorias
 

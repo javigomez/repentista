@@ -7,12 +7,12 @@ import {
   type PunchlineAssessmentRequest,
   type PunchlineVerse,
 } from "./punchline-assessment/index.js";
+import { createGenerationBrief } from "../domain/generation-brief/index.js";
 import {
-  createGenerationBrief,
   createQuatrainCandidate,
   transitionQuatrainCandidate,
   type QuatrainCandidate,
-} from "../domain/index.js";
+} from "../domain/quatrain-candidate/index.js";
 import { FixtureStructuredLlmGenerator } from "../testing/structured-llm-generation-fake.js";
 import type { StructuredLlmGenerationPort } from "../ports/structured-llm-generation/index.js";
 
@@ -427,5 +427,4 @@ test("rejects output that smuggles humor into the punchline assessment", async (
   assert.equal(result.error.code, "LLM_ASSESSMENT_FAILED");
   assert.equal(result.error.cause.code, "INVALID_STRUCTURED_OUTPUT");
 });
-
 

@@ -1,4 +1,4 @@
-import type { ApplicationHandler } from "../../application/index.js";
+import type { ApplicationHandler } from "../../application/application-handler.js";
 
 export function runCli(application: ApplicationHandler): void {
   application();

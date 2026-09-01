@@ -1,5 +1,5 @@
 /** Public entrypoint for application use cases. */
-export type ApplicationHandler = () => void;
+export type { ApplicationHandler } from "./application-handler.js";
 export * from "./batch-duplicate-detection/index.js";
 export * from "./approved-lexicon/index.js";
 export * from "./octonol-meter/index.js";
