@@ -189,7 +189,11 @@ export type CandidateLifecycleTransitionInput =
     };
 
 export interface CandidateLifecycleEvent {
-  readonly type: CandidateLifecycleTransitionInput["type"] | "CANDIDATE_CREATED" | "REPAIR_RECORDED";
+  readonly type:
+    | CandidateLifecycleTransitionInput["type"]
+    | "CANDIDATE_CREATED"
+    | "REPAIR_RECORDED"
+    | "VOCABULARY_SUITABILITY_RECORDED";
   readonly at: string;
   readonly validators?: readonly ComponentVersion[];
   readonly diagnostics?: readonly ValidatorDiagnosticInput[];
@@ -206,6 +210,7 @@ export interface CandidateLifecycleEvent {
   readonly packageId?: string;
   readonly contractVersion?: string;
   readonly repair?: CandidateRepairInput;
+  readonly vocabularySuitabilityAssessment?: VocabularySuitabilityAssessmentRecord;
 }
 
 export interface ValidationRequestRecord {
@@ -252,6 +257,74 @@ export interface ExportRecord {
   readonly contractVersion: string;
 }
 
+export const VOCABULARY_SUITABILITY_ISSUES = Object.freeze([
+  "DEMASIADO_CULTO",
+  "ABSTRACTO",
+  "INFANTILIZANTE",
+  "AMBIGUO_CONTEXTUAL",
+] as const);
+
+export type VocabularySuitabilityIssue = (typeof VOCABULARY_SUITABILITY_ISSUES)[number];
+
+export interface VocabularyWordMetadata {
+  readonly slot: VerseSlot;
+  readonly form: string;
+  readonly normalizedForm: string;
+  readonly dictionaryLevel: string;
+}
+
+export interface VocabularyFlaggedWord {
+  readonly slot: VerseSlot;
+  readonly form: string;
+  readonly issue: VocabularySuitabilityIssue;
+  readonly reason: string;
+  readonly alternatives: readonly string[];
+}
+
+export interface VocabularySuitabilityModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface VocabularySuitabilityAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly wordMetadata: readonly VocabularyWordMetadata[];
+  readonly flaggedWords: readonly VocabularyFlaggedWord[];
+  readonly dictionaryVersion: string;
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: VocabularySuitabilityModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type VocabularySuitabilityAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_VOCABULARY_FIELD";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type VocabularySuitabilityAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: VocabularySuitabilityAssessmentError };
+
 export interface CandidatePlan {
   readonly rhymeScheme: string;
   readonly metricPositions: number;
@@ -282,6 +355,7 @@ export interface QuatrainCandidate {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly vocabularySuitabilityAssessment?: VocabularySuitabilityAssessmentRecord;
 }
 
 export const QUATRAIN_CANDIDATE_SNAPSHOT_VERSION = "quatrain-candidate-snapshot/v1" as const;
@@ -304,6 +378,7 @@ export interface QuatrainCandidateSnapshot {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly vocabularySuitabilityAssessment?: VocabularySuitabilityAssessmentRecord;
 }
 
 export type CandidateCreationError =
@@ -481,6 +556,46 @@ const freezeExport = (record: ExportRecord): ExportRecord =>
     contractVersion: record.contractVersion,
   });
 
+const freezeVocabularyWordMetadata = (
+  metadata: VocabularyWordMetadata,
+): VocabularyWordMetadata =>
+  Object.freeze({
+    slot: metadata.slot,
+    form: metadata.form,
+    normalizedForm: metadata.normalizedForm,
+    dictionaryLevel: metadata.dictionaryLevel,
+  });
+
+const freezeVocabularyFlaggedWord = (
+  flaggedWord: VocabularyFlaggedWord,
+): VocabularyFlaggedWord =>
+  Object.freeze({
+    slot: flaggedWord.slot,
+    form: flaggedWord.form,
+    issue: flaggedWord.issue,
+    reason: flaggedWord.reason,
+    alternatives: Object.freeze([...flaggedWord.alternatives]),
+  });
+
+const freezeVocabularySuitabilityAssessment = (
+  assessment: VocabularySuitabilityAssessmentRecord,
+): VocabularySuitabilityAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    wordMetadata: Object.freeze(assessment.wordMetadata.map(freezeVocabularyWordMetadata)),
+    flaggedWords: Object.freeze(assessment.flaggedWords.map(freezeVocabularyFlaggedWord)),
+    dictionaryVersion: assessment.dictionaryVersion,
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
 const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
   Object.freeze({
     ...event,
@@ -495,6 +610,13 @@ const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
       ? {}
       : { breakdown: Object.freeze(event.breakdown.map(freezeScoreBreakdown)) }),
     ...(event.repair === undefined ? {} : { repair: freezeRepair(event.repair) }),
+    ...(event.vocabularySuitabilityAssessment === undefined
+      ? {}
+      : {
+          vocabularySuitabilityAssessment: freezeVocabularySuitabilityAssessment(
+            event.vocabularySuitabilityAssessment,
+          ),
+        }),
   });
 
 const freezePlanSlot = (slot: CandidateVersePlanInput): CandidateVersePlanInput =>
@@ -698,6 +820,13 @@ export function toQuatrainCandidateSnapshot(
       ? {}
       : { editorialDecision: freezeEditorialDecision(candidate.editorialDecision) }),
     ...(candidate.exportRecord === undefined ? {} : { exportRecord: freezeExport(candidate.exportRecord) }),
+    ...(candidate.vocabularySuitabilityAssessment === undefined
+      ? {}
+      : {
+          vocabularySuitabilityAssessment: freezeVocabularySuitabilityAssessment(
+            candidate.vocabularySuitabilityAssessment,
+          ),
+        }),
   });
 }
 
@@ -929,6 +1058,129 @@ export function recordCandidateRepair(
       state: candidate.state,
       events: Object.freeze([...candidate.events, repairEvent]),
       repairs: Object.freeze([...candidate.repairs, repair]),
+    }),
+  });
+}
+
+const HARD_VALIDATION_PASSED_STATES: readonly QuatrainCandidateState[] = Object.freeze([
+  "VALIDO",
+  "PUNTUADO",
+  "BAJO_UMBRAL",
+  "SELECCIONADO",
+  "APROBADO",
+  "RECHAZADO_EDITORIAL",
+  "EXPORTADO",
+]);
+
+export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
+  return HARD_VALIDATION_PASSED_STATES.includes(state);
+}
+
+const VOCABULARY_NOTE_MINIMUM = 0;
+const VOCABULARY_NOTE_MAXIMUM = 10;
+const VOCABULARY_CONFIDENCE_MINIMUM = 0;
+const VOCABULARY_CONFIDENCE_MAXIMUM = 1;
+
+const VOCABULARY_ISSUE_SET: ReadonlySet<VocabularySuitabilityIssue> = new Set(
+  VOCABULARY_SUITABILITY_ISSUES,
+);
+
+export function recordVocabularySuitabilityAssessment(
+  candidate: QuatrainCandidate,
+  assessment: VocabularySuitabilityAssessmentRecord,
+): VocabularySuitabilityAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de vocabulario a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < VOCABULARY_NOTE_MINIMUM ||
+    assessment.note > VOCABULARY_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${VOCABULARY_NOTE_MINIMUM} y ${VOCABULARY_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < VOCABULARY_CONFIDENCE_MINIMUM ||
+    assessment.confidence > VOCABULARY_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${VOCABULARY_CONFIDENCE_MINIMUM} y ${VOCABULARY_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  if (
+    assessment.flaggedWords.some(
+      (flaggedWord) =>
+        flaggedWord.form.trim().length === 0 ||
+        flaggedWord.reason.trim().length === 0 ||
+        !VOCABULARY_ISSUE_SET.has(flaggedWord.issue) ||
+        flaggedWord.alternatives.some((alternative) => alternative.trim().length === 0),
+    )
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_VOCABULARY_FIELD" as const,
+        message:
+          "La evaluación debe citar palabras problemáticas válidas con su causa observable y alternativas no vacías.",
+        path: "$.flaggedWords",
+      }),
+    });
+  }
+
+  if (
+    assessment.wordMetadata.some(
+      (metadata) =>
+        metadata.form.trim().length === 0 ||
+        metadata.normalizedForm.trim().length === 0 ||
+        metadata.dictionaryLevel.trim().length === 0,
+    )
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_VOCABULARY_FIELD" as const,
+        message: "Los metadatos del diccionario deben citar formas y niveles no vacíos.",
+        path: "$.wordMetadata",
+      }),
+    });
+  }
+
+  const frozen = freezeVocabularySuitabilityAssessment(assessment);
+  const event = freezeEvent({
+    type: "VOCABULARY_SUITABILITY_RECORDED",
+    at: assessment.assessedAt,
+    vocabularySuitabilityAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      vocabularySuitabilityAssessment: frozen,
     }),
   });
 }
