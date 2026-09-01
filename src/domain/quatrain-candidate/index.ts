@@ -200,6 +200,7 @@ export interface CandidateLifecycleEvent {
     | "PUNCHLINE_RECORDED"
     | "COHERENCE_RECORDED"
     | "RIPIO_DETECTION_RECORDED"
+    | "HUMOR_RECORDED"
     | "NATURALNESS_RECORDED";
   readonly at: string;
   readonly validators?: readonly ComponentVersion[];
@@ -218,6 +219,7 @@ export interface CandidateLifecycleEvent {
   readonly contractVersion?: string;
   readonly repair?: CandidateRepairInput;
   readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly humorAssessment?: HumorAssessmentRecord;
   readonly ripioDetection?: RipioDetectionRecord;
   readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
   readonly punchlineAssessment?: PunchlineAssessmentRecord;
@@ -330,6 +332,70 @@ export type PunchlineAssessmentError =
 export type PunchlineAssessmentRecordResult =
   | { readonly ok: true; readonly value: QuatrainCandidate }
   | { readonly ok: false; readonly error: PunchlineAssessmentError };
+
+export const HUMOR_MECHANISMS = Object.freeze([
+  "SORPRESA",
+  "ABSURDO",
+  "IMAGEN",
+  "JUEGO_CONCEPTUAL",
+] as const);
+
+export type HumorMechanism = (typeof HUMOR_MECHANISMS)[number];
+
+export const HUMOR_CLARITIES = Object.freeze(["CLARA", "AMBIGUA"] as const);
+
+export type HumorClarity = (typeof HUMOR_CLARITIES)[number];
+
+export interface HumorFragment {
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly reason: string;
+}
+
+export interface HumorAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface HumorAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly mechanism: HumorMechanism;
+  readonly clarity: HumorClarity;
+  readonly fragments: readonly HumorFragment[];
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: HumorAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type HumorAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_HUMOR_FIELD";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type HumorAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: HumorAssessmentError };
+
 
 export interface CoherenceTransitionEvidence {
   readonly from: VerseSlot;
@@ -519,6 +585,7 @@ export interface QuatrainCandidate {
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
   readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly humorAssessment?: HumorAssessmentRecord;
   readonly ripioDetection?: RipioDetectionRecord;
   readonly punchlineAssessment?: PunchlineAssessmentRecord;
   readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
@@ -545,6 +612,7 @@ export interface QuatrainCandidateSnapshot {
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
   readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly humorAssessment?: HumorAssessmentRecord;
   readonly ripioDetection?: RipioDetectionRecord;
   readonly punchlineAssessment?: PunchlineAssessmentRecord;
   readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
@@ -787,6 +855,32 @@ const freezeRipioDetection = (record: RipioDetectionRecord): RipioDetectionRecor
     }),
     assessedAt: record.assessedAt,
     providerRequestId: record.providerRequestId,
+  });
+
+const freezeHumorFragment = (fragment: HumorFragment): HumorFragment =>
+  Object.freeze({
+    slot: fragment.slot,
+    fragment: fragment.fragment,
+    reason: fragment.reason,
+  });
+
+const freezeHumorAssessment = (
+  assessment: HumorAssessmentRecord,
+): HumorAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    mechanism: assessment.mechanism,
+    clarity: assessment.clarity,
+    fragments: Object.freeze(assessment.fragments.map(freezeHumorFragment)),
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
   });
 
 const freezeCoherenceTransition = (
@@ -1318,6 +1412,117 @@ const HARD_VALIDATION_PASSED_STATES: readonly QuatrainCandidateState[] = Object.
 
 export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
   return HARD_VALIDATION_PASSED_STATES.includes(state);
+}
+
+const HUMOR_NOTE_MINIMUM = 0;
+const HUMOR_NOTE_MAXIMUM = 10;
+const HUMOR_CONFIDENCE_MINIMUM = 0;
+const HUMOR_CONFIDENCE_MAXIMUM = 1;
+
+const HUMOR_MECHANISM_SET: ReadonlySet<HumorMechanism> = new Set(HUMOR_MECHANISMS);
+const HUMOR_CLARITY_SET: ReadonlySet<HumorClarity> = new Set(HUMOR_CLARITIES);
+
+export function recordHumorAssessment(
+  candidate: QuatrainCandidate,
+  assessment: HumorAssessmentRecord,
+): HumorAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de humor a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < HUMOR_NOTE_MINIMUM ||
+    assessment.note > HUMOR_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${HUMOR_NOTE_MINIMUM} y ${HUMOR_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < HUMOR_CONFIDENCE_MINIMUM ||
+    assessment.confidence > HUMOR_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${HUMOR_CONFIDENCE_MINIMUM} y ${HUMOR_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  if (!HUMOR_MECHANISM_SET.has(assessment.mechanism)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_HUMOR_FIELD" as const,
+        message: `El mecanismo humorístico debe ser uno de ${HUMOR_MECHANISMS.join(", ")}.`,
+        path: "$.mechanism",
+      }),
+    });
+  }
+
+  if (!HUMOR_CLARITY_SET.has(assessment.clarity)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_HUMOR_FIELD" as const,
+        message: `La claridad debe ser una de ${HUMOR_CLARITIES.join(", ")}.`,
+        path: "$.clarity",
+      }),
+    });
+  }
+
+  if (
+    assessment.fragments.length === 0 ||
+    assessment.fragments.some(
+      (fragment) =>
+        fragment.fragment.trim().length === 0 ||
+        fragment.reason.trim().length === 0,
+    )
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_HUMOR_FIELD" as const,
+        message:
+          "La evaluación debe citar fragmentos textuales con su causa para justificar el mecanismo observado.",
+        path: "$.fragments",
+      }),
+    });
+  }
+
+  const frozen = freezeHumorAssessment(assessment);
+  const event = freezeEvent({
+    type: "HUMOR_RECORDED",
+    at: assessment.assessedAt,
+    humorAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      humorAssessment: frozen,
+    }),
+  });
 }
 
 const COHERENCE_NOTE_MINIMUM = 0;
