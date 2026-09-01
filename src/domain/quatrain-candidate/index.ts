@@ -189,7 +189,11 @@ export type CandidateLifecycleTransitionInput =
     };
 
 export interface CandidateLifecycleEvent {
-  readonly type: CandidateLifecycleTransitionInput["type"] | "CANDIDATE_CREATED" | "REPAIR_RECORDED";
+  readonly type:
+    | CandidateLifecycleTransitionInput["type"]
+    | "CANDIDATE_CREATED"
+    | "REPAIR_RECORDED"
+    | "PUNCHLINE_RECORDED";
   readonly at: string;
   readonly validators?: readonly ComponentVersion[];
   readonly diagnostics?: readonly ValidatorDiagnosticInput[];
@@ -206,6 +210,7 @@ export interface CandidateLifecycleEvent {
   readonly packageId?: string;
   readonly contractVersion?: string;
   readonly repair?: CandidateRepairInput;
+  readonly punchlineAssessment?: PunchlineAssessmentRecord;
 }
 
 export interface ValidationRequestRecord {
@@ -252,6 +257,70 @@ export interface ExportRecord {
   readonly contractVersion: string;
 }
 
+export const PUNCHLINE_TWIST_DEGREES = Object.freeze([
+  "NINGUNO",
+  "LEVE",
+  "MODERADO",
+  "FUERTE",
+] as const);
+
+export type PunchlineTwistDegree = (typeof PUNCHLINE_TWIST_DEGREES)[number];
+
+export const PUNCHLINE_CONTEXT_DEPENDENCIES = Object.freeze([
+  "NULA",
+  "PARCIAL",
+  "TOTAL",
+] as const);
+
+export type PunchlineContextDependency = (typeof PUNCHLINE_CONTEXT_DEPENDENCIES)[number];
+
+export interface PunchlineAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface PunchlineAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly expectation: string;
+  readonly expectationEvidence: readonly string[];
+  readonly resolution: string;
+  readonly resolutionEvidence: string;
+  readonly twistDegree: PunchlineTwistDegree;
+  readonly contextDependency: PunchlineContextDependency;
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: PunchlineAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type PunchlineAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_PUNCHLINE_FIELD";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type PunchlineAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: PunchlineAssessmentError };
+
 export interface CandidatePlan {
   readonly rhymeScheme: string;
   readonly metricPositions: number;
@@ -282,6 +351,7 @@ export interface QuatrainCandidate {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly punchlineAssessment?: PunchlineAssessmentRecord;
 }
 
 export const QUATRAIN_CANDIDATE_SNAPSHOT_VERSION = "quatrain-candidate-snapshot/v1" as const;
@@ -304,6 +374,7 @@ export interface QuatrainCandidateSnapshot {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly punchlineAssessment?: PunchlineAssessmentRecord;
 }
 
 export type CandidateCreationError =
@@ -481,6 +552,28 @@ const freezeExport = (record: ExportRecord): ExportRecord =>
     contractVersion: record.contractVersion,
   });
 
+const freezePunchlineAssessment = (
+  assessment: PunchlineAssessmentRecord,
+): PunchlineAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    expectation: assessment.expectation,
+    expectationEvidence: Object.freeze([...assessment.expectationEvidence]),
+    resolution: assessment.resolution,
+    resolutionEvidence: assessment.resolutionEvidence,
+    twistDegree: assessment.twistDegree,
+    contextDependency: assessment.contextDependency,
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
 const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
   Object.freeze({
     ...event,
@@ -495,6 +588,9 @@ const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
       ? {}
       : { breakdown: Object.freeze(event.breakdown.map(freezeScoreBreakdown)) }),
     ...(event.repair === undefined ? {} : { repair: freezeRepair(event.repair) }),
+    ...(event.punchlineAssessment === undefined
+      ? {}
+      : { punchlineAssessment: freezePunchlineAssessment(event.punchlineAssessment) }),
   });
 
 const freezePlanSlot = (slot: CandidateVersePlanInput): CandidateVersePlanInput =>
@@ -698,6 +794,9 @@ export function toQuatrainCandidateSnapshot(
       ? {}
       : { editorialDecision: freezeEditorialDecision(candidate.editorialDecision) }),
     ...(candidate.exportRecord === undefined ? {} : { exportRecord: freezeExport(candidate.exportRecord) }),
+    ...(candidate.punchlineAssessment === undefined
+      ? {}
+      : { punchlineAssessment: freezePunchlineAssessment(candidate.punchlineAssessment) }),
   });
 }
 
@@ -929,6 +1028,164 @@ export function recordCandidateRepair(
       state: candidate.state,
       events: Object.freeze([...candidate.events, repairEvent]),
       repairs: Object.freeze([...candidate.repairs, repair]),
+    }),
+  });
+}
+
+const HARD_VALIDATION_PASSED_STATES: readonly QuatrainCandidateState[] = Object.freeze([
+  "VALIDO",
+  "PUNTUADO",
+  "BAJO_UMBRAL",
+  "SELECCIONADO",
+  "APROBADO",
+  "RECHAZADO_EDITORIAL",
+  "EXPORTADO",
+]);
+
+export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
+  return HARD_VALIDATION_PASSED_STATES.includes(state);
+}
+
+const PUNCHLINE_NOTE_MINIMUM = 0;
+const PUNCHLINE_NOTE_MAXIMUM = 10;
+const PUNCHLINE_CONFIDENCE_MINIMUM = 0;
+const PUNCHLINE_CONFIDENCE_MAXIMUM = 1;
+
+const PUNCHLINE_TWIST_DEGREE_SET: ReadonlySet<PunchlineTwistDegree> = new Set(
+  PUNCHLINE_TWIST_DEGREES,
+);
+
+const PUNCHLINE_CONTEXT_DEPENDENCY_SET: ReadonlySet<PunchlineContextDependency> = new Set(
+  PUNCHLINE_CONTEXT_DEPENDENCIES,
+);
+
+export function recordPunchlineAssessment(
+  candidate: QuatrainCandidate,
+  assessment: PunchlineAssessmentRecord,
+): PunchlineAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de remate a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < PUNCHLINE_NOTE_MINIMUM ||
+    assessment.note > PUNCHLINE_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${PUNCHLINE_NOTE_MINIMUM} y ${PUNCHLINE_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < PUNCHLINE_CONFIDENCE_MINIMUM ||
+    assessment.confidence > PUNCHLINE_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${PUNCHLINE_CONFIDENCE_MINIMUM} y ${PUNCHLINE_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  if (assessment.expectation.trim().length === 0) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe resumir la expectativa previa antes de dar nota.",
+        path: "$.expectation",
+      }),
+    });
+  }
+
+  if (assessment.resolution.trim().length === 0) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe resumir la resolución de V4 antes de dar nota.",
+        path: "$.resolution",
+      }),
+    });
+  }
+
+  if (
+    assessment.expectationEvidence.length === 0 ||
+    assessment.expectationEvidence.some((citation) => citation.trim().length === 0)
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe citar evidencia textual de V1–V3 que justifique la expectativa.",
+        path: "$.expectationEvidence",
+      }),
+    });
+  }
+
+  if (assessment.resolutionEvidence.trim().length === 0) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe citar evidencia textual de V4 que justifique la resolución.",
+        path: "$.resolutionEvidence",
+      }),
+    });
+  }
+
+  if (!PUNCHLINE_TWIST_DEGREE_SET.has(assessment.twistDegree)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: `El grado de giro debe ser uno de ${PUNCHLINE_TWIST_DEGREES.join(", ")}.`,
+        path: "$.twistDegree",
+      }),
+    });
+  }
+
+  if (!PUNCHLINE_CONTEXT_DEPENDENCY_SET.has(assessment.contextDependency)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: `La dependencia del contexto debe ser una de ${PUNCHLINE_CONTEXT_DEPENDENCIES.join(", ")}.`,
+        path: "$.contextDependency",
+      }),
+    });
+  }
+
+  const frozen = freezePunchlineAssessment(assessment);
+  const event = freezeEvent({
+    type: "PUNCHLINE_RECORDED",
+    at: assessment.assessedAt,
+    punchlineAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      punchlineAssessment: frozen,
     }),
   });
 }

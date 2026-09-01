@@ -8,13 +8,16 @@ import {
 import {
   createQuatrainCandidate,
   createQuatrainCandidateWithCollaborators,
+  hasPassedHardValidation,
   recordCandidateRepair,
+  recordPunchlineAssessment,
   toQuatrainCandidateSnapshot,
   transitionQuatrainCandidate,
   type CandidateLifecycleTransitionInput,
   type CandidatePlanInput,
   type CandidateProvenanceInput,
   type CandidateRepairInput,
+  type PunchlineAssessmentRecord,
   type QuatrainCandidate,
   type QuatrainCandidateInput,
 } from "./quatrain-candidate/index.js";
@@ -127,6 +130,27 @@ function createdCandidate(): QuatrainCandidate {
   }
 
   return result.value;
+}
+
+function punchlineAssessment(
+  overrides: Partial<PunchlineAssessmentRecord> = {},
+): PunchlineAssessmentRecord {
+  return {
+    note: 9,
+    confidence: 0.9,
+    expectation: "V1–V3 construyen la promesa de compartir la merienda",
+    expectationEvidence: ["promete compartir la merienda"],
+    resolution: "V4 convierte la promesa en un giro: solo comparte el olor",
+    resolutionEvidence: "solo el olor del jamón",
+    twistDegree: "MODERADO",
+    contextDependency: "TOTAL",
+    rubricVersion: "0.1.0",
+    prompt: { id: "punchline-rubric", version: "0.1.0" },
+    model: { provider: "openai", name: "gpt-5" },
+    assessedAt: "2026-08-30T09:18:30.000Z",
+    providerRequestId: "req-punchline-001",
+    ...overrides,
+  };
 }
 
 function validScoreTransition(): CandidateLifecycleTransitionInput {
@@ -658,4 +682,188 @@ test("serializes rejection and repair history without sharing mutable arrays", (
   assert.notEqual(snapshot.events, repaired.value.events);
   assert.notEqual(snapshot.repairs, repaired.value.repairs);
   assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), snapshot);
+});
+
+test("identifies states that have already passed hard validation", () => {
+  const passed = [
+    "VALIDO",
+    "PUNTUADO",
+    "BAJO_UMBRAL",
+    "SELECCIONADO",
+    "APROBADO",
+    "RECHAZADO_EDITORIAL",
+    "EXPORTADO",
+  ] as const;
+  const blocked = ["GENERADO", "VALIDACION_PENDIENTE", "RECHAZADO"] as const;
+
+  for (const state of passed) {
+    assert.equal(hasPassedHardValidation(state), true, `${state} should count as validated`);
+  }
+
+  for (const state of blocked) {
+    assert.equal(hasPassedHardValidation(state), false, `${state} should count as blocked`);
+  }
+});
+
+test("records a punchline assessment without changing state or hard validation results", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordPunchlineAssessment(candidate, punchlineAssessment());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.state, "VALIDO");
+  assert.equal(result.value.plan, candidate.plan);
+  assert.equal(result.value.provenance, candidate.provenance);
+  assert.equal(result.value.validationCompletion, candidate.validationCompletion);
+  assert.deepEqual(result.value.rejections, candidate.rejections);
+  assert.equal(result.value.score, candidate.score);
+  assert.deepEqual(result.value.punchlineAssessment, punchlineAssessment());
+  assert.equal(result.value.events.at(-1)?.type, "PUNCHLINE_RECORDED");
+  assert.deepEqual(
+    result.value.events.at(-1)?.punchlineAssessment,
+    result.value.punchlineAssessment,
+  );
+  assert.equal(Object.isFrozen(result.value), true);
+  assert.equal(Object.isFrozen(result.value.punchlineAssessment), true);
+  assert.equal(Object.isFrozen(result.value.punchlineAssessment?.expectationEvidence), true);
+});
+
+test("rejects punchline assessment when a hard blocker is present", () => {
+  const blockedStates: readonly QuatrainCandidate["state"][] = [
+    "GENERADO",
+    "VALIDACION_PENDIENTE",
+    "RECHAZADO",
+  ];
+
+  for (const state of blockedStates) {
+    const candidate = candidateInState(state);
+    const result = recordPunchlineAssessment(candidate, punchlineAssessment());
+
+    assert.equal(result.ok, false, `${state} should reject the assessment`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "STATE_NOT_ELIGIBLE");
+    assert.equal(result.error.currentState, state);
+    assert.equal(candidate.state, state);
+    assert.equal(candidate.punchlineAssessment, undefined);
+  }
+});
+
+test("rejects out-of-range punchline note and confidence", () => {
+  const candidate = candidateInState("VALIDO");
+
+  for (const note of [11, -1]) {
+    const result = recordPunchlineAssessment(candidate, punchlineAssessment({ note }));
+
+    assert.equal(result.ok, false, `note ${note} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_NOTE");
+    assert.equal(result.error.note, note);
+  }
+
+  for (const confidence of [1.5, -0.1]) {
+    const result = recordPunchlineAssessment(
+      candidate,
+      punchlineAssessment({ confidence }),
+    );
+
+    assert.equal(result.ok, false, `confidence ${confidence} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_CONFIDENCE");
+    assert.equal(result.error.confidence, confidence);
+  }
+});
+
+test("rejects a punchline assessment without expectation or resolution summaries", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const emptyExpectation = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ expectation: "   " }),
+  );
+
+  assert.equal(emptyExpectation.ok, false);
+  if (!emptyExpectation.ok) {
+    assert.equal(emptyExpectation.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(emptyExpectation.error.path, "$.expectation");
+  }
+
+  const emptyResolution = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ resolution: "" }),
+  );
+
+  assert.equal(emptyResolution.ok, false);
+  if (!emptyResolution.ok) {
+    assert.equal(emptyResolution.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(emptyResolution.error.path, "$.resolution");
+  }
+});
+
+test("rejects a punchline assessment without textual evidence citations", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const noExpectationEvidence = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ expectationEvidence: [] }),
+  );
+
+  assert.equal(noExpectationEvidence.ok, false);
+  if (!noExpectationEvidence.ok) {
+    assert.equal(noExpectationEvidence.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(noExpectationEvidence.error.path, "$.expectationEvidence");
+  }
+
+  const blankExpectationEvidence = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ expectationEvidence: ["  "] }),
+  );
+
+  assert.equal(blankExpectationEvidence.ok, false);
+  if (!blankExpectationEvidence.ok) {
+    assert.equal(blankExpectationEvidence.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(blankExpectationEvidence.error.path, "$.expectationEvidence");
+  }
+
+  const noResolutionEvidence = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ resolutionEvidence: "" }),
+  );
+
+  assert.equal(noResolutionEvidence.ok, false);
+  if (!noResolutionEvidence.ok) {
+    assert.equal(noResolutionEvidence.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(noResolutionEvidence.error.path, "$.resolutionEvidence");
+  }
+});
+
+test("rejects invalid twist degree and context dependency labels", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const badTwist = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ twistDegree: "ENORME" as PunchlineAssessmentRecord["twistDegree"] }),
+  );
+
+  assert.equal(badTwist.ok, false);
+  if (!badTwist.ok) {
+    assert.equal(badTwist.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(badTwist.error.path, "$.twistDegree");
+  }
+
+  const badDependency = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({
+      contextDependency: "ABSOLUTA" as PunchlineAssessmentRecord["contextDependency"],
+    }),
+  );
+
+  assert.equal(badDependency.ok, false);
+  if (!badDependency.ok) {
+    assert.equal(badDependency.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(badDependency.error.path, "$.contextDependency");
+  }
 });
