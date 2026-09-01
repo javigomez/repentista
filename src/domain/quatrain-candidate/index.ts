@@ -189,7 +189,11 @@ export type CandidateLifecycleTransitionInput =
     };
 
 export interface CandidateLifecycleEvent {
-  readonly type: CandidateLifecycleTransitionInput["type"] | "CANDIDATE_CREATED" | "REPAIR_RECORDED";
+  readonly type:
+    | CandidateLifecycleTransitionInput["type"]
+    | "CANDIDATE_CREATED"
+    | "REPAIR_RECORDED"
+    | "COHERENCE_RECORDED";
   readonly at: string;
   readonly validators?: readonly ComponentVersion[];
   readonly diagnostics?: readonly ValidatorDiagnosticInput[];
@@ -206,6 +210,7 @@ export interface CandidateLifecycleEvent {
   readonly packageId?: string;
   readonly contractVersion?: string;
   readonly repair?: CandidateRepairInput;
+  readonly coherenceAssessment?: CoherenceAssessmentRecord;
 }
 
 export interface ValidationRequestRecord {
@@ -252,6 +257,55 @@ export interface ExportRecord {
   readonly contractVersion: string;
 }
 
+export interface CoherenceTransitionEvidence {
+  readonly from: VerseSlot;
+  readonly to: VerseSlot;
+  readonly relation: string;
+  readonly evidence: string;
+}
+
+export interface CoherenceAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface CoherenceAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly transitions: readonly CoherenceTransitionEvidence[];
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: CoherenceAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type CoherenceAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_TRANSITION";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type CoherenceAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: CoherenceAssessmentError };
+
 export interface CandidatePlan {
   readonly rhymeScheme: string;
   readonly metricPositions: number;
@@ -282,6 +336,7 @@ export interface QuatrainCandidate {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly coherenceAssessment?: CoherenceAssessmentRecord;
 }
 
 export const QUATRAIN_CANDIDATE_SNAPSHOT_VERSION = "quatrain-candidate-snapshot/v1" as const;
@@ -304,6 +359,7 @@ export interface QuatrainCandidateSnapshot {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly coherenceAssessment?: CoherenceAssessmentRecord;
 }
 
 export type CandidateCreationError =
@@ -481,6 +537,33 @@ const freezeExport = (record: ExportRecord): ExportRecord =>
     contractVersion: record.contractVersion,
   });
 
+const freezeCoherenceTransition = (
+  transition: CoherenceTransitionEvidence,
+): CoherenceTransitionEvidence =>
+  Object.freeze({
+    from: transition.from,
+    to: transition.to,
+    relation: transition.relation,
+    evidence: transition.evidence,
+  });
+
+const freezeCoherenceAssessment = (
+  assessment: CoherenceAssessmentRecord,
+): CoherenceAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    transitions: Object.freeze(assessment.transitions.map(freezeCoherenceTransition)),
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
 const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
   Object.freeze({
     ...event,
@@ -495,6 +578,9 @@ const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
       ? {}
       : { breakdown: Object.freeze(event.breakdown.map(freezeScoreBreakdown)) }),
     ...(event.repair === undefined ? {} : { repair: freezeRepair(event.repair) }),
+    ...(event.coherenceAssessment === undefined
+      ? {}
+      : { coherenceAssessment: freezeCoherenceAssessment(event.coherenceAssessment) }),
   });
 
 const freezePlanSlot = (slot: CandidateVersePlanInput): CandidateVersePlanInput =>
@@ -698,6 +784,9 @@ export function toQuatrainCandidateSnapshot(
       ? {}
       : { editorialDecision: freezeEditorialDecision(candidate.editorialDecision) }),
     ...(candidate.exportRecord === undefined ? {} : { exportRecord: freezeExport(candidate.exportRecord) }),
+    ...(candidate.coherenceAssessment === undefined
+      ? {}
+      : { coherenceAssessment: freezeCoherenceAssessment(candidate.coherenceAssessment) }),
   });
 }
 
@@ -929,6 +1018,146 @@ export function recordCandidateRepair(
       state: candidate.state,
       events: Object.freeze([...candidate.events, repairEvent]),
       repairs: Object.freeze([...candidate.repairs, repair]),
+    }),
+  });
+}
+
+const HARD_VALIDATION_PASSED_STATES: readonly QuatrainCandidateState[] = Object.freeze([
+  "VALIDO",
+  "PUNTUADO",
+  "BAJO_UMBRAL",
+  "SELECCIONADO",
+  "APROBADO",
+  "RECHAZADO_EDITORIAL",
+  "EXPORTADO",
+]);
+
+const COHERENCE_NOTE_MINIMUM = 0;
+const COHERENCE_NOTE_MAXIMUM = 15;
+const COHERENCE_CONFIDENCE_MINIMUM = 0;
+const COHERENCE_CONFIDENCE_MAXIMUM = 1;
+
+const COHERENCE_TRANSITION_STEPS: readonly { readonly from: VerseSlot; readonly to: VerseSlot }[] =
+  Object.freeze([
+    Object.freeze({ from: "V1" as VerseSlot, to: "V2" as VerseSlot }),
+    Object.freeze({ from: "V2" as VerseSlot, to: "V3" as VerseSlot }),
+    Object.freeze({ from: "V3" as VerseSlot, to: "V4" as VerseSlot }),
+  ]);
+
+export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
+  return HARD_VALIDATION_PASSED_STATES.includes(state);
+}
+
+const validateCoherenceTransitions = (
+  transitions: readonly CoherenceTransitionEvidence[],
+): CoherenceAssessmentError | undefined => {
+  if (transitions.length !== COHERENCE_TRANSITION_STEPS.length) {
+    return Object.freeze({
+      code: "INVALID_TRANSITION" as const,
+      message: "La evaluación debe describir exactamente las transiciones V1→V2, V2→V3 y V3→V4.",
+      path: "$.transitions",
+    });
+  }
+
+  for (const [index, transition] of transitions.entries()) {
+    const expected = COHERENCE_TRANSITION_STEPS[index];
+    const path = `$.transitions[${index}]`;
+
+    if (expected === undefined || transition.from !== expected.from || transition.to !== expected.to) {
+      const expectedStep =
+        expected === undefined ? "V?" : `${expected.from}→${expected.to}`;
+
+      return Object.freeze({
+        code: "INVALID_TRANSITION" as const,
+        message: `La transición ${path} debe conectar ${expectedStep}.`,
+        path,
+      });
+    }
+
+    if (transition.relation.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_TRANSITION" as const,
+        message: `La transición ${path} debe declarar un tipo de relación.`,
+        path,
+      });
+    }
+
+    if (transition.evidence.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_TRANSITION" as const,
+        message: `La transición ${path} debe citar un referente o vínculo observable.`,
+        path,
+      });
+    }
+  }
+
+  return undefined;
+};
+
+export function recordCoherenceAssessment(
+  candidate: QuatrainCandidate,
+  assessment: CoherenceAssessmentRecord,
+): CoherenceAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de coherencia a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < COHERENCE_NOTE_MINIMUM ||
+    assessment.note > COHERENCE_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${COHERENCE_NOTE_MINIMUM} y ${COHERENCE_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < COHERENCE_CONFIDENCE_MINIMUM ||
+    assessment.confidence > COHERENCE_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${COHERENCE_CONFIDENCE_MINIMUM} y ${COHERENCE_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  const transitionError = validateCoherenceTransitions(assessment.transitions);
+
+  if (transitionError !== undefined) {
+    return Object.freeze({ ok: false as const, error: transitionError });
+  }
+
+  const frozen = freezeCoherenceAssessment(assessment);
+  const event = freezeEvent({
+    type: "COHERENCE_RECORDED",
+    at: assessment.assessedAt,
+    coherenceAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      coherenceAssessment: frozen,
     }),
   });
 }
