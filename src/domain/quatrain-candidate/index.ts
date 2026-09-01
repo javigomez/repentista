@@ -56,6 +56,10 @@ export interface CandidateVersePlanInput {
   readonly plannedFinalWord: string;
 }
 
+export type CoherenceAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: CoherenceAssessmentError };
+
 export interface CandidatePlanInput {
   readonly rhymeScheme: string;
   readonly metricPositions: number;
@@ -193,6 +197,7 @@ export interface CandidateLifecycleEvent {
     | CandidateLifecycleTransitionInput["type"]
     | "CANDIDATE_CREATED"
     | "REPAIR_RECORDED"
+    | "RIPIO_DETECTION_RECORDED"
     | "COHERENCE_RECORDED"
     | "NATURALNESS_RECORDED";
   readonly at: string;
@@ -213,6 +218,7 @@ export interface CandidateLifecycleEvent {
   readonly repair?: CandidateRepairInput;
   readonly coherenceAssessment?: CoherenceAssessmentRecord;
   readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
+  readonly ripioDetection?: RipioDetectionRecord;
 }
 
 export interface ValidationRequestRecord {
@@ -271,17 +277,6 @@ export interface CoherenceAssessmentModel {
   readonly name: string;
 }
 
-export interface NaturalnessObservation {
-  readonly slot: VerseSlot;
-  readonly fragment: string;
-  readonly reason: string;
-}
-
-export interface NaturalnessAssessmentModel {
-  readonly provider: string;
-  readonly name: string;
-}
-
 export interface CoherenceAssessmentRecord {
   readonly note: number;
   readonly confidence: number;
@@ -291,6 +286,23 @@ export interface CoherenceAssessmentRecord {
   readonly model: CoherenceAssessmentModel;
   readonly assessedAt: string;
   readonly providerRequestId: string;
+}
+
+export type CoherenceAssessmentError =
+  | { readonly code: "STATE_NOT_ELIGIBLE"; readonly message: string; readonly currentState: QuatrainCandidateState }
+  | { readonly code: "INVALID_NOTE"; readonly message: string; readonly note: number }
+  | { readonly code: "INVALID_CONFIDENCE"; readonly message: string; readonly confidence: number }
+  | { readonly code: "INVALID_TRANSITION"; readonly message: string; readonly path: string };
+
+export interface NaturalnessObservation {
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly reason: string;
+}
+
+export interface NaturalnessAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
 }
 
 export interface NaturalnessAssessmentRecord {
@@ -304,56 +316,96 @@ export interface NaturalnessAssessmentRecord {
   readonly providerRequestId: string;
 }
 
-export type CoherenceAssessmentError =
-  | {
-      readonly code: "STATE_NOT_ELIGIBLE";
-      readonly message: string;
-      readonly currentState: QuatrainCandidateState;
-    }
-  | {
-      readonly code: "INVALID_NOTE";
-      readonly message: string;
-      readonly note: number;
-    }
-  | {
-      readonly code: "INVALID_CONFIDENCE";
-      readonly message: string;
-      readonly confidence: number;
-    }
-  | {
-      readonly code: "INVALID_TRANSITION";
-      readonly message: string;
-      readonly path: string;
-    };
-
 export type NaturalnessAssessmentError =
-  | {
-      readonly code: "STATE_NOT_ELIGIBLE";
-      readonly message: string;
-      readonly currentState: QuatrainCandidateState;
-    }
-  | {
-      readonly code: "INVALID_NOTE";
-      readonly message: string;
-      readonly note: number;
-    }
-  | {
-      readonly code: "INVALID_CONFIDENCE";
-      readonly message: string;
-      readonly confidence: number;
-    }
-  | {
-      readonly code: "INVALID_OBSERVATION";
-      readonly message: string;
-      readonly path: string;
-    };
+  | { readonly code: "STATE_NOT_ELIGIBLE"; readonly message: string; readonly currentState: QuatrainCandidateState }
+  | { readonly code: "INVALID_NOTE"; readonly message: string; readonly note: number }
+  | { readonly code: "INVALID_CONFIDENCE"; readonly message: string; readonly confidence: number }
+  | { readonly code: "INVALID_OBSERVATION"; readonly message: string; readonly path: string };
 
-export type CoherenceAssessmentRecordResult =
-  | { readonly ok: true; readonly value: QuatrainCandidate }
-  | { readonly ok: false; readonly error: CoherenceAssessmentError };
 export type NaturalnessAssessmentRecordResult =
   | { readonly ok: true; readonly value: QuatrainCandidate }
   | { readonly ok: false; readonly error: NaturalnessAssessmentError };
+
+
+export type RipioSeverity = "NINGUNO" | "LEVE" | "MODERADO" | "GRAVE";
+
+export interface RipioFragment {
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly reason: string;
+}
+
+export interface RipioSignal {
+  readonly patternId: string;
+  readonly patternVersion: string;
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly severity: RipioSeverity;
+  readonly reason: string;
+}
+
+export interface RipioLlmVerdict {
+  readonly severity: RipioSeverity;
+  readonly confidence: number;
+  readonly fragments: readonly RipioFragment[];
+  readonly explanation: string;
+}
+
+export interface RipioDetectionModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface RipioDetectionRecord {
+  readonly presence: boolean;
+  readonly severity: RipioSeverity;
+  readonly fragments: readonly RipioFragment[];
+  readonly signals: readonly RipioSignal[];
+  readonly llm: RipioLlmVerdict;
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: RipioDetectionModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type RipioDetectionError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_SEVERITY";
+      readonly message: string;
+      readonly severity: RipioSeverity;
+    }
+  | {
+      readonly code: "INCONSISTENT_PRESENCE";
+      readonly message: string;
+      readonly severity: RipioSeverity;
+      readonly presence: boolean;
+    }
+  | {
+      readonly code: "INVALID_FRAGMENT";
+      readonly message: string;
+      readonly path: string;
+    }
+  | {
+      readonly code: "INVALID_SIGNAL";
+      readonly message: string;
+      readonly path: string;
+    }
+  | {
+      readonly code: "INVALID_LLM";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type RipioDetectionRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: RipioDetectionError };
+
 
 export interface CandidatePlan {
   readonly rhymeScheme: string;
@@ -386,6 +438,7 @@ export interface QuatrainCandidate {
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
   readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly ripioDetection?: RipioDetectionRecord;
   readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
 }
 
@@ -410,6 +463,7 @@ export interface QuatrainCandidateSnapshot {
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
   readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly ripioDetection?: RipioDetectionRecord;
   readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
 }
 
@@ -588,6 +642,48 @@ const freezeExport = (record: ExportRecord): ExportRecord =>
     contractVersion: record.contractVersion,
   });
 
+const freezeRipioFragment = (fragment: RipioFragment): RipioFragment =>
+  Object.freeze({
+    slot: fragment.slot,
+    fragment: fragment.fragment,
+    reason: fragment.reason,
+  });
+
+const freezeRipioSignal = (signal: RipioSignal): RipioSignal =>
+  Object.freeze({
+    patternId: signal.patternId,
+    patternVersion: signal.patternVersion,
+    slot: signal.slot,
+    fragment: signal.fragment,
+    severity: signal.severity,
+    reason: signal.reason,
+  });
+
+const freezeRipioLlmVerdict = (llm: RipioLlmVerdict): RipioLlmVerdict =>
+  Object.freeze({
+    severity: llm.severity,
+    confidence: llm.confidence,
+    fragments: Object.freeze(llm.fragments.map(freezeRipioFragment)),
+    explanation: llm.explanation,
+  });
+
+const freezeRipioDetection = (record: RipioDetectionRecord): RipioDetectionRecord =>
+  Object.freeze({
+    presence: record.presence,
+    severity: record.severity,
+    fragments: Object.freeze(record.fragments.map(freezeRipioFragment)),
+    signals: Object.freeze(record.signals.map(freezeRipioSignal)),
+    llm: freezeRipioLlmVerdict(record.llm),
+    rubricVersion: record.rubricVersion,
+    prompt: freezePrompt(record.prompt),
+    model: Object.freeze({
+      provider: record.model.provider,
+      name: record.model.name,
+    }),
+    assessedAt: record.assessedAt,
+    providerRequestId: record.providerRequestId,
+  });
+
 const freezeCoherenceTransition = (
   transition: CoherenceTransitionEvidence,
 ): CoherenceTransitionEvidence =>
@@ -641,6 +737,7 @@ const freezeNaturalnessAssessment = (
     providerRequestId: assessment.providerRequestId,
   });
 
+
 const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
   Object.freeze({
     ...event,
@@ -655,12 +752,12 @@ const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
       ? {}
       : { breakdown: Object.freeze(event.breakdown.map(freezeScoreBreakdown)) }),
     ...(event.repair === undefined ? {} : { repair: freezeRepair(event.repair) }),
-    ...(event.coherenceAssessment === undefined
-      ? {}
-      : { coherenceAssessment: freezeCoherenceAssessment(event.coherenceAssessment) }),
     ...(event.naturalnessAssessment === undefined
       ? {}
       : { naturalnessAssessment: freezeNaturalnessAssessment(event.naturalnessAssessment) }),
+    ...(event.ripioDetection === undefined
+      ? {}
+      : { ripioDetection: freezeRipioDetection(event.ripioDetection) }),
   });
 
 const freezePlanSlot = (slot: CandidateVersePlanInput): CandidateVersePlanInput =>
@@ -864,12 +961,12 @@ export function toQuatrainCandidateSnapshot(
       ? {}
       : { editorialDecision: freezeEditorialDecision(candidate.editorialDecision) }),
     ...(candidate.exportRecord === undefined ? {} : { exportRecord: freezeExport(candidate.exportRecord) }),
-    ...(candidate.coherenceAssessment === undefined
-      ? {}
-      : { coherenceAssessment: freezeCoherenceAssessment(candidate.coherenceAssessment) }),
     ...(candidate.naturalnessAssessment === undefined
       ? {}
       : { naturalnessAssessment: freezeNaturalnessAssessment(candidate.naturalnessAssessment) }),
+    ...(candidate.ripioDetection === undefined
+      ? {}
+      : { ripioDetection: freezeRipioDetection(candidate.ripioDetection) }),
   });
 }
 
@@ -1115,6 +1212,10 @@ const HARD_VALIDATION_PASSED_STATES: readonly QuatrainCandidateState[] = Object.
   "EXPORTADO",
 ]);
 
+export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
+  return HARD_VALIDATION_PASSED_STATES.includes(state);
+}
+
 const COHERENCE_NOTE_MINIMUM = 0;
 const COHERENCE_NOTE_MAXIMUM = 15;
 const COHERENCE_CONFIDENCE_MINIMUM = 0;
@@ -1131,9 +1232,6 @@ const NATURALNESS_NOTE_MAXIMUM = 20;
 const NATURALNESS_CONFIDENCE_MINIMUM = 0;
 const NATURALNESS_CONFIDENCE_MAXIMUM = 1;
 
-export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
-  return HARD_VALIDATION_PASSED_STATES.includes(state);
-}
 
 const validateCoherenceTransitions = (
   transitions: readonly CoherenceTransitionEvidence[],
@@ -1264,6 +1362,7 @@ const validateNaturalnessObservations = (
         path,
       });
     }
+
     if (seenSlots.has(observation.slot)) {
       return Object.freeze({
         code: "INVALID_OBSERVATION" as const,
@@ -1271,6 +1370,7 @@ const validateNaturalnessObservations = (
         path,
       });
     }
+
     if (observation.fragment.trim().length === 0) {
       return Object.freeze({
         code: "INVALID_OBSERVATION" as const,
@@ -1278,6 +1378,7 @@ const validateNaturalnessObservations = (
         path,
       });
     }
+
     if (observation.reason.trim().length === 0) {
       return Object.freeze({
         code: "INVALID_OBSERVATION" as const,
@@ -1285,8 +1386,10 @@ const validateNaturalnessObservations = (
         path,
       });
     }
+
     seenSlots.add(observation.slot);
   }
+
   return undefined;
 };
 
@@ -1354,6 +1457,247 @@ export function recordNaturalnessAssessment(
       state: candidate.state,
       events: Object.freeze([...candidate.events, event]),
       naturalnessAssessment: frozen,
+    }),
+  });
+}
+
+const RIPIO_SEVERITIES: readonly RipioSeverity[] = Object.freeze([
+  "NINGUNO",
+  "LEVE",
+  "MODERADO",
+  "GRAVE",
+]);
+
+const RIPIO_SEVERITY_SET: ReadonlySet<RipioSeverity> = new Set(RIPIO_SEVERITIES);
+
+const RIPIO_CONFIDENCE_MINIMUM = 0;
+const RIPIO_CONFIDENCE_MAXIMUM = 1;
+
+const isRipioSeverity = (value: unknown): value is RipioSeverity =>
+  typeof value === "string" && RIPIO_SEVERITY_SET.has(value as RipioSeverity);
+
+const ripioInvalidFragmentError = (path: string, message: string): RipioDetectionError =>
+  Object.freeze({
+    code: "INVALID_FRAGMENT" as const,
+    message,
+    path,
+  });
+
+const validateRipioFragments = (
+  fragments: readonly RipioFragment[],
+  pathPrefix: string,
+): RipioDetectionError | undefined => {
+  const seen = new Set<string>();
+
+  for (const [index, fragment] of fragments.entries()) {
+    const path = `${pathPrefix}[${index}]`;
+
+    if (!expectedSlots.includes(fragment.slot)) {
+      return ripioInvalidFragmentError(
+        `${path}.slot`,
+        `El fragmento ${path} usa un slot no reconocido.`,
+      );
+    }
+
+    if (fragment.fragment.trim().length === 0) {
+      return ripioInvalidFragmentError(
+        `${path}.fragment`,
+        `El fragmento ${path} debe citar un texto no vacío.`,
+      );
+    }
+
+    if (fragment.reason.trim().length === 0) {
+      return ripioInvalidFragmentError(
+        `${path}.reason`,
+        `El fragmento ${path} debe incluir una razón observable.`,
+      );
+    }
+
+    const key = `${fragment.slot}\u0000${fragment.fragment.trim()}`;
+
+    if (seen.has(key)) {
+      return ripioInvalidFragmentError(path, `El fragmento ${path} duplica un fragmento ya citado.`);
+    }
+
+    seen.add(key);
+  }
+
+  return undefined;
+};
+
+const validateRipioSignals = (
+  signals: readonly RipioSignal[],
+): RipioDetectionError | undefined => {
+  const seen = new Set<string>();
+
+  for (const [index, signal] of signals.entries()) {
+    const path = `$.signals[${index}]`;
+
+    if (signal.patternId.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe declarar un identificador de patrón.`,
+        path,
+      });
+    }
+
+    if (signal.patternVersion.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe declarar una versión de patrón.`,
+        path,
+      });
+    }
+
+    if (!expectedSlots.includes(signal.slot)) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} usa un slot no reconocido.`,
+        path,
+      });
+    }
+
+    if (signal.fragment.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe citar un fragmento no vacío.`,
+        path,
+      });
+    }
+
+    if (!isRipioSeverity(signal.severity)) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} usa una severidad no reconocida.`,
+        path,
+      });
+    }
+
+    if (signal.reason.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe incluir una razón observable.`,
+        path,
+      });
+    }
+
+    const key = `${signal.patternId}\u0000${signal.slot}\u0000${signal.fragment.trim()}`;
+
+    if (seen.has(key)) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} duplica una señal ya declarada.`,
+        path,
+      });
+    }
+
+    seen.add(key);
+  }
+
+  return undefined;
+};
+
+const validateRipioLlmVerdict = (llm: RipioLlmVerdict): RipioDetectionError | undefined => {
+  if (!isRipioSeverity(llm.severity)) {
+    return Object.freeze({
+      code: "INVALID_LLM" as const,
+      message: `El juicio LLM usa una severidad no reconocida: ${String(llm.severity)}.`,
+      path: "$.llm.severity",
+    });
+  }
+
+  if (
+    !Number.isFinite(llm.confidence) ||
+    llm.confidence < RIPIO_CONFIDENCE_MINIMUM ||
+    llm.confidence > RIPIO_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      code: "INVALID_LLM" as const,
+      message: `La confianza del LLM debe estar entre ${RIPIO_CONFIDENCE_MINIMUM} y ${RIPIO_CONFIDENCE_MAXIMUM}.`,
+      path: "$.llm.confidence",
+    });
+  }
+
+  if (llm.explanation.trim().length === 0) {
+    return Object.freeze({
+      code: "INVALID_LLM" as const,
+      message: "El juicio LLM debe incluir una explicación breve.",
+      path: "$.llm.explanation",
+    });
+  }
+
+  return validateRipioFragments(llm.fragments, "$.llm.fragments");
+};
+
+export function recordRipioDetection(
+  candidate: QuatrainCandidate,
+  record: RipioDetectionRecord,
+): RipioDetectionRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una detección de ripio a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (!isRipioSeverity(record.severity)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_SEVERITY" as const,
+        message: `La severidad no es un valor reconocido: ${String(record.severity)}.`,
+        severity: record.severity,
+      }),
+    });
+  }
+
+  if (record.presence !== (record.severity !== "NINGUNO")) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INCONSISTENT_PRESENCE" as const,
+        message: `La presencia debe ser coherente con la severidad ${record.severity}.`,
+        severity: record.severity,
+        presence: record.presence,
+      }),
+    });
+  }
+
+  const fragmentsError = validateRipioFragments(record.fragments, "$.fragments");
+
+  if (fragmentsError !== undefined) {
+    return Object.freeze({ ok: false as const, error: fragmentsError });
+  }
+
+  const signalsError = validateRipioSignals(record.signals);
+
+  if (signalsError !== undefined) {
+    return Object.freeze({ ok: false as const, error: signalsError });
+  }
+
+  const llmError = validateRipioLlmVerdict(record.llm);
+
+  if (llmError !== undefined) {
+    return Object.freeze({ ok: false as const, error: llmError });
+  }
+
+  const frozen = freezeRipioDetection(record);
+  const event = freezeEvent({
+    type: "RIPIO_DETECTION_RECORDED",
+    at: record.assessedAt,
+    ripioDetection: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      ripioDetection: frozen,
     }),
   });
 }
