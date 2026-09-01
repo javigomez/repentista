@@ -11,6 +11,7 @@ import {
   hasPassedHardValidation,
   recordCandidateRepair,
   recordNaturalnessAssessment,
+  recordCoherenceAssessment,
   toQuatrainCandidateSnapshot,
   transitionQuatrainCandidate,
   type CandidateLifecycleTransitionInput,
@@ -18,6 +19,7 @@ import {
   type CandidateProvenanceInput,
   type CandidateRepairInput,
   type NaturalnessAssessmentRecord,
+  type CoherenceAssessmentRecord,
   type QuatrainCandidate,
   type QuatrainCandidateInput,
   type VerseSlot,
@@ -133,6 +135,41 @@ function createdCandidate(): QuatrainCandidate {
   return result.value;
 }
 
+function coherenceAssessment(
+  overrides: Partial<CoherenceAssessmentRecord> = {},
+): CoherenceAssessmentRecord {
+  return {
+    note: 13,
+    confidence: 0.9,
+    transitions: [
+      {
+        from: "V1",
+        to: "V2",
+        relation: "continuidad de referente",
+        evidence: "el gato sigue siendo el sujeto",
+      },
+      {
+        from: "V2",
+        to: "V3",
+        relation: "causalidad",
+        evidence: "el hambre explica la distracción",
+      },
+      {
+        from: "V3",
+        to: "V4",
+        relation: "progresión al remate",
+        evidence: "la distracción desemboca en el remate",
+      },
+    ],
+    rubricVersion: "0.1.0",
+    prompt: { id: "coherence-rubric", version: "0.1.0" },
+    model: { provider: "openai", name: "gpt-5" },
+    assessedAt: "2026-08-30T09:18:30.000Z",
+    providerRequestId: "req-coherence-001",
+    ...overrides,
+  };
+}
+
 function naturalnessAssessment(
   overrides: Partial<NaturalnessAssessmentRecord> = {},
 ): NaturalnessAssessmentRecord {
@@ -150,6 +187,7 @@ function naturalnessAssessment(
     ...overrides,
   };
 }
+
 
 function validScoreTransition(): CandidateLifecycleTransitionInput {
   return {
@@ -703,6 +741,153 @@ test("identifies states that have already passed hard validation", () => {
   }
 });
 
+test("records a coherence assessment without changing state or hard validation results", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordCoherenceAssessment(candidate, coherenceAssessment());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.state, "VALIDO");
+  assert.equal(result.value.plan, candidate.plan);
+  assert.equal(result.value.provenance, candidate.provenance);
+  assert.equal(result.value.validationCompletion, candidate.validationCompletion);
+  assert.deepEqual(result.value.rejections, candidate.rejections);
+  assert.equal(result.value.score, candidate.score);
+  assert.deepEqual(result.value.coherenceAssessment, coherenceAssessment());
+  assert.equal(result.value.events.at(-1)?.type, "COHERENCE_RECORDED");
+  assert.deepEqual(
+    result.value.events.at(-1)?.coherenceAssessment,
+    result.value.coherenceAssessment,
+  );
+  assert.equal(Object.isFrozen(result.value), true);
+  assert.equal(Object.isFrozen(result.value.coherenceAssessment), true);
+  assert.equal(Object.isFrozen(result.value.coherenceAssessment?.transitions), true);
+});
+
+test("rejects coherence assessment when a hard blocker is present", () => {
+  const blockedStates: readonly QuatrainCandidate["state"][] = [
+    "GENERADO",
+    "VALIDACION_PENDIENTE",
+    "RECHAZADO",
+  ];
+
+  for (const state of blockedStates) {
+    const candidate = candidateInState(state);
+    const result = recordCoherenceAssessment(candidate, coherenceAssessment());
+
+    assert.equal(result.ok, false, `${state} should reject the assessment`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "STATE_NOT_ELIGIBLE");
+    assert.equal(result.error.currentState, state);
+    assert.equal(candidate.state, state);
+    assert.equal(candidate.coherenceAssessment, undefined);
+  }
+});
+
+test("rejects out-of-range coherence note and confidence", () => {
+  const candidate = candidateInState("VALIDO");
+
+  for (const note of [16, -1]) {
+    const result = recordCoherenceAssessment(candidate, coherenceAssessment({ note }));
+
+    assert.equal(result.ok, false, `note ${note} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_NOTE");
+    assert.equal(result.error.note, note);
+  }
+
+  for (const confidence of [1.5, -0.1]) {
+    const result = recordCoherenceAssessment(
+      candidate,
+      coherenceAssessment({ confidence }),
+    );
+
+    assert.equal(result.ok, false, `confidence ${confidence} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_CONFIDENCE");
+    assert.equal(result.error.confidence, confidence);
+  }
+});
+
+test("rejects malformed coherence transitions", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const missingStep = recordCoherenceAssessment(
+    candidate,
+    coherenceAssessment({
+      transitions: coherenceAssessment().transitions.filter((transition) => transition.from !== "V2"),
+    }),
+  );
+
+  assert.equal(missingStep.ok, false);
+  if (!missingStep.ok) {
+    assert.equal(missingStep.error.code, "INVALID_TRANSITION");
+  }
+
+  const wrongOrder = recordCoherenceAssessment(
+    candidate,
+    coherenceAssessment({
+      transitions: [
+        coherenceAssessment().transitions[1],
+        coherenceAssessment().transitions[0],
+        coherenceAssessment().transitions[2],
+      ],
+    }),
+  );
+
+  assert.equal(wrongOrder.ok, false);
+  if (!wrongOrder.ok) {
+    assert.equal(wrongOrder.error.code, "INVALID_TRANSITION");
+  }
+
+  const emptyRelation = recordCoherenceAssessment(
+    candidate,
+    coherenceAssessment({
+      transitions: [
+        {
+          from: "V1" as VerseSlot,
+          to: "V2" as VerseSlot,
+          relation: "   ",
+          evidence: "el gato sigue siendo el sujeto",
+        },
+        coherenceAssessment().transitions[1],
+        coherenceAssessment().transitions[2],
+      ],
+    }),
+  );
+
+  assert.equal(emptyRelation.ok, false);
+  if (!emptyRelation.ok) {
+    assert.equal(emptyRelation.error.code, "INVALID_TRANSITION");
+  }
+
+  const emptyEvidence = recordCoherenceAssessment(
+    candidate,
+    coherenceAssessment({
+      transitions: [
+        {
+          from: "V1" as VerseSlot,
+          to: "V2" as VerseSlot,
+          relation: "continuidad de referente",
+          evidence: "",
+        },
+        coherenceAssessment().transitions[1],
+        coherenceAssessment().transitions[2],
+      ],
+    }),
+  );
+
+  assert.equal(emptyEvidence.ok, false);
+  if (!emptyEvidence.ok) {
+    assert.equal(emptyEvidence.error.code, "INVALID_TRANSITION");
+  }
+});
+
+
 test("records a naturalness assessment without changing state or hard validation results", () => {
   const candidate = candidateInState("VALIDO");
   const result = recordNaturalnessAssessment(candidate, naturalnessAssessment());
@@ -831,3 +1016,4 @@ test("rejects malformed naturalness observations", () => {
     assert.equal(duplicateSlot.error.path, "$.observations[1]");
   }
 });
+
