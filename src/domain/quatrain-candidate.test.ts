@@ -11,8 +11,11 @@ import {
   hasPassedHardValidation,
   recordCandidateRepair,
   recordCoherenceAssessment,
-  recordVocabularySuitabilityAssessment,
   recordNaturalnessAssessment,
+  recordVocabularySuitabilityAssessment,
+  recordHumorAssessment,
+  recordRipioDetection,
+  recordPunchlineAssessment,
   toQuatrainCandidateSnapshot,
   transitionQuatrainCandidate,
   type CandidateLifecycleTransitionInput,
@@ -20,10 +23,14 @@ import {
   type CandidateProvenanceInput,
   type CandidateRepairInput,
   type CoherenceAssessmentRecord,
-  type QuatrainCandidate,
-  type QuatrainCandidateInput,
   type NaturalnessAssessmentRecord,
   type VocabularySuitabilityAssessmentRecord,
+  type HumorAssessmentRecord,
+  type RipioDetectionRecord,
+  type RipioSeverity,
+  type PunchlineAssessmentRecord,
+  type QuatrainCandidate,
+  type QuatrainCandidateInput,
   type VerseSlot,
 } from "./quatrain-candidate/index.js";
 import { fixedClock, sequenceDouble } from "../testing/test-doubles.js";
@@ -137,6 +144,27 @@ function createdCandidate(): QuatrainCandidate {
   return result.value;
 }
 
+function punchlineAssessment(
+  overrides: Partial<PunchlineAssessmentRecord> = {},
+): PunchlineAssessmentRecord {
+  return {
+    note: 9,
+    confidence: 0.9,
+    expectation: "V1–V3 construyen la promesa de compartir la merienda",
+    expectationEvidence: ["promete compartir la merienda"],
+    resolution: "V4 convierte la promesa en un giro: solo comparte el olor",
+    resolutionEvidence: "solo el olor del jamón",
+    twistDegree: "MODERADO",
+    contextDependency: "TOTAL",
+    rubricVersion: "0.1.0",
+    prompt: { id: "punchline-rubric", version: "0.1.0" },
+    model: { provider: "openai", name: "gpt-5" },
+    assessedAt: "2026-08-30T09:18:30.000Z",
+    providerRequestId: "req-punchline-001",
+    ...overrides,
+  };
+}
+
 function coherenceAssessment(
   overrides: Partial<CoherenceAssessmentRecord> = {},
 ): CoherenceAssessmentRecord {
@@ -186,6 +214,56 @@ function naturalnessAssessment(
     model: { provider: "openai", name: "gpt-5" },
     assessedAt: "2026-08-30T09:18:30.000Z",
     providerRequestId: "req-naturalness-001",
+    ...overrides,
+  };
+}
+
+
+function humorAssessment(
+  overrides: Partial<HumorAssessmentRecord> = {},
+): HumorAssessmentRecord {
+  return {
+    note: 9,
+    confidence: 0.9,
+    mechanism: "SORPRESA",
+    clarity: "CLARA",
+    fragments: [
+      {
+        slot: "V4",
+        fragment: "solo el olor del jamón",
+        reason: "La promesa de compartir se resuelve compartiendo solo el olor.",
+      },
+    ],
+    rubricVersion: "0.1.0",
+    prompt: { id: "humor-rubric", version: "0.1.0" },
+    model: { provider: "openai", name: "gpt-5" },
+    assessedAt: "2026-08-30T09:18:30.000Z",
+    providerRequestId: "req-humor-001",
+    ...overrides,
+  };
+}
+
+function vocabularySuitabilityAssessment(
+  overrides: Partial<VocabularySuitabilityAssessmentRecord> = {},
+): VocabularySuitabilityAssessmentRecord {
+  return {
+    note: 8,
+    confidence: 0.9,
+    wordMetadata: [
+      {
+        slot: "V4",
+        form: "balcón",
+        normalizedForm: "balcon",
+        dictionaryLevel: "basico",
+      },
+    ],
+    flaggedWords: [],
+    dictionaryVersion: "dictionary-2026-08-30",
+    rubricVersion: "0.1.0",
+    prompt: { id: "vocabulary-suitability-rubric", version: "0.1.0" },
+    model: { provider: "openai", name: "gpt-5" },
+    assessedAt: "2026-08-30T09:22:00.000Z",
+    providerRequestId: "req-vocab-001",
     ...overrides,
   };
 }
@@ -359,38 +437,13 @@ function candidateInState(state: QuatrainCandidate["state"]): QuatrainCandidate 
   throw new Error(`Unsupported candidate state fixture: ${exhaustive}`);
 }
 
-function vocabularySuitabilityAssessment(
-  overrides: Partial<VocabularySuitabilityAssessmentRecord> = {},
-): VocabularySuitabilityAssessmentRecord {
-  return {
-    note: 8,
-    confidence: 0.9,
-    wordMetadata: [
-      {
-        slot: "V4",
-        form: "balcón",
-        normalizedForm: "balcon",
-        dictionaryLevel: "basico",
-      },
-    ],
-    flaggedWords: [],
-    dictionaryVersion: "dictionary-2026-08-30",
-    rubricVersion: "0.1.0",
-    prompt: { id: "vocabulary-suitability-rubric", version: "0.1.0" },
-    model: { provider: "openai", name: "gpt-5" },
-    assessedAt: "2026-08-30T09:22:00.000Z",
-    providerRequestId: "req-vocab-001",
-    ...overrides,
-  };
-}
-
 test("creates a complete auditable candidate with four ordered verse slots", () => {
   const input = candidateInput();
 
   const result = createQuatrainCandidate(input);
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.id, "candidate-001");
   assert.equal(result.value.batchId, "batch-001");
@@ -555,7 +608,7 @@ test("keeps validator rejection evidence localizable and append-only in the even
   const result = transitionQuatrainCandidate(pending, hardValidationRejectedTransition());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.state, "RECHAZADO");
   assert.deepEqual(result.value.rejections, [
@@ -609,12 +662,12 @@ test("records repairs as immutable history without overwriting prior attempts", 
   const repairedOnce = recordCandidateRepair(rejected, firstRepair);
 
   assert.equal(repairedOnce.ok, true);
-  if (!repairedOnce.ok) return;
+  if (!repairedOnce.ok) throw new Error("Expected successful result in test");
 
   const repairedTwice = recordCandidateRepair(repairedOnce.value, secondRepair);
 
   assert.equal(repairedTwice.ok, true);
-  if (!repairedTwice.ok) return;
+  if (!repairedTwice.ok) throw new Error("Expected successful result in test");
 
   assert.deepEqual(rejected.repairs, []);
   assert.deepEqual(
@@ -641,7 +694,7 @@ test("creates candidates with deterministic ID and clock collaborators", () => {
   const result = createQuatrainCandidateWithCollaborators(input, collaborators);
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.id, "candidate-fixed-001");
   assert.equal(result.value.provenance.createdAt, CREATED_AT);
@@ -733,7 +786,7 @@ test("serializes rejection and repair history without sharing mutable arrays", (
   const repaired = recordCandidateRepair(rejected, repair);
 
   assert.equal(repaired.ok, true);
-  if (!repaired.ok) return;
+  if (!repaired.ok) throw new Error("Expected successful result in test");
 
   const snapshot = toQuatrainCandidateSnapshot(repaired.value);
 
@@ -766,6 +819,503 @@ test("identifies states that have already passed hard validation", () => {
     assert.equal(hasPassedHardValidation(state), false, `${state} should count as blocked`);
   }
 });
+
+test("records a punchline assessment without changing state or hard validation results", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordPunchlineAssessment(candidate, punchlineAssessment());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("Expected successful result in test");
+
+  assert.equal(result.value.state, "VALIDO");
+  assert.equal(result.value.plan, candidate.plan);
+  assert.equal(result.value.provenance, candidate.provenance);
+  assert.equal(result.value.validationCompletion, candidate.validationCompletion);
+  assert.deepEqual(result.value.rejections, candidate.rejections);
+  assert.equal(result.value.score, candidate.score);
+  assert.deepEqual(result.value.punchlineAssessment, punchlineAssessment());
+  assert.equal(result.value.events.at(-1)?.type, "PUNCHLINE_RECORDED");
+  assert.deepEqual(
+    result.value.events.at(-1)?.punchlineAssessment,
+    result.value.punchlineAssessment,
+  );
+  assert.equal(Object.isFrozen(result.value), true);
+  assert.equal(Object.isFrozen(result.value.punchlineAssessment), true);
+  assert.equal(Object.isFrozen(result.value.punchlineAssessment?.expectationEvidence), true);
+});
+
+test("rejects punchline assessment when a hard blocker is present", () => {
+  const blockedStates: readonly QuatrainCandidate["state"][] = [
+    "GENERADO",
+    "VALIDACION_PENDIENTE",
+    "RECHAZADO",
+  ];
+
+  for (const state of blockedStates) {
+    const candidate = candidateInState(state);
+    const result = recordPunchlineAssessment(candidate, punchlineAssessment());
+
+    assert.equal(result.ok, false, `${state} should reject the assessment`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "STATE_NOT_ELIGIBLE");
+    assert.equal(result.error.currentState, state);
+    assert.equal(candidate.state, state);
+    assert.equal(candidate.punchlineAssessment, undefined);
+  }
+});
+
+test("rejects out-of-range punchline note and confidence", () => {
+  const candidate = candidateInState("VALIDO");
+
+  for (const note of [11, -1]) {
+    const result = recordPunchlineAssessment(candidate, punchlineAssessment({ note }));
+
+    assert.equal(result.ok, false, `note ${note} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_NOTE");
+    assert.equal(result.error.note, note);
+  }
+
+  for (const confidence of [1.5, -0.1]) {
+    const result = recordPunchlineAssessment(
+      candidate,
+      punchlineAssessment({ confidence }),
+    );
+
+    assert.equal(result.ok, false, `confidence ${confidence} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_CONFIDENCE");
+    assert.equal(result.error.confidence, confidence);
+  }
+});
+
+test("rejects a punchline assessment without expectation or resolution summaries", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const emptyExpectation = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ expectation: "   " }),
+  );
+
+  assert.equal(emptyExpectation.ok, false);
+  if (!emptyExpectation.ok) {
+    assert.equal(emptyExpectation.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(emptyExpectation.error.path, "$.expectation");
+  }
+
+  const emptyResolution = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ resolution: "" }),
+  );
+
+  assert.equal(emptyResolution.ok, false);
+  if (!emptyResolution.ok) {
+    assert.equal(emptyResolution.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(emptyResolution.error.path, "$.resolution");
+  }
+});
+
+test("rejects a punchline assessment without textual evidence citations", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const noExpectationEvidence = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ expectationEvidence: [] }),
+  );
+
+  assert.equal(noExpectationEvidence.ok, false);
+  if (!noExpectationEvidence.ok) {
+    assert.equal(noExpectationEvidence.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(noExpectationEvidence.error.path, "$.expectationEvidence");
+  }
+
+  const blankExpectationEvidence = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ expectationEvidence: ["  "] }),
+  );
+
+  assert.equal(blankExpectationEvidence.ok, false);
+  if (!blankExpectationEvidence.ok) {
+    assert.equal(blankExpectationEvidence.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(blankExpectationEvidence.error.path, "$.expectationEvidence");
+  }
+
+  const noResolutionEvidence = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ resolutionEvidence: "" }),
+  );
+
+  assert.equal(noResolutionEvidence.ok, false);
+  if (!noResolutionEvidence.ok) {
+    assert.equal(noResolutionEvidence.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(noResolutionEvidence.error.path, "$.resolutionEvidence");
+  }
+});
+
+test("rejects invalid twist degree and context dependency labels", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const badTwist = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({ twistDegree: "ENORME" as PunchlineAssessmentRecord["twistDegree"] }),
+  );
+
+  assert.equal(badTwist.ok, false);
+  if (!badTwist.ok) {
+    assert.equal(badTwist.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(badTwist.error.path, "$.twistDegree");
+  }
+
+  const badDependency = recordPunchlineAssessment(
+    candidate,
+    punchlineAssessment({
+      contextDependency: "ABSOLUTA" as PunchlineAssessmentRecord["contextDependency"],
+    }),
+  );
+
+  assert.equal(badDependency.ok, false);
+  if (!badDependency.ok) {
+    assert.equal(badDependency.error.code, "INVALID_PUNCHLINE_FIELD");
+    assert.equal(badDependency.error.path, "$.contextDependency");
+  }
+});
+
+
+function ripioDetection(
+  overrides: Partial<RipioDetectionRecord> = {},
+): RipioDetectionRecord {
+  return {
+    presence: true,
+    severity: "LEVE",
+    fragments: [
+      { slot: "V3", fragment: "es que", reason: "muletilla de relleno" },
+    ],
+    signals: [
+      {
+        patternId: "ripio.filler",
+        patternVersion: "0.1.0",
+        slot: "V3",
+        fragment: "es que",
+        severity: "LEVE",
+        reason: "muletilla de relleno",
+      },
+    ],
+    llm: {
+      severity: "NINGUNO",
+      confidence: 0.9,
+      fragments: [],
+      explanation: "No se aprecia ripio adicional.",
+    },
+    rubricVersion: "0.1.0",
+    prompt: { id: "ripio-detection-rubric", version: "0.1.0" },
+    model: { provider: "openai", name: "gpt-5" },
+    assessedAt: "2026-08-30T09:22:00.000Z",
+    providerRequestId: "req-ripio-001",
+    ...overrides,
+  };
+}
+
+test("identifies states that have already passed hard validation", () => {
+  const passed = [
+    "VALIDO",
+    "PUNTUADO",
+    "BAJO_UMBRAL",
+    "SELECCIONADO",
+    "APROBADO",
+    "RECHAZADO_EDITORIAL",
+    "EXPORTADO",
+  ] as const;
+  const blocked = ["GENERADO", "VALIDACION_PENDIENTE", "RECHAZADO"] as const;
+
+  for (const state of passed) {
+    assert.equal(hasPassedHardValidation(state), true, `${state} should count as validated`);
+  }
+
+  for (const state of blocked) {
+    assert.equal(hasPassedHardValidation(state), false, `${state} should count as blocked`);
+  }
+});
+
+test("records a humor assessment without changing state or hard validation results", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordHumorAssessment(candidate, humorAssessment());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.state, "VALIDO");
+  assert.equal(result.value.plan, candidate.plan);
+  assert.equal(result.value.provenance, candidate.provenance);
+  assert.equal(result.value.validationCompletion, candidate.validationCompletion);
+  assert.deepEqual(result.value.rejections, candidate.rejections);
+  assert.equal(result.value.score, candidate.score);
+  assert.deepEqual(result.value.humorAssessment, humorAssessment());
+  assert.equal(result.value.events.at(-1)?.type, "HUMOR_RECORDED");
+  assert.deepEqual(
+    result.value.events.at(-1)?.humorAssessment,
+    result.value.humorAssessment,
+  );
+  assert.equal(Object.isFrozen(result.value), true);
+  assert.equal(Object.isFrozen(result.value.humorAssessment), true);
+  assert.equal(Object.isFrozen(result.value.humorAssessment?.fragments), true);
+  assert.equal(Object.isFrozen(result.value.humorAssessment?.fragments[0]), true);
+});
+
+test("rejects humor assessment when a hard blocker is present", () => {
+  const blockedStates: readonly QuatrainCandidate["state"][] = [
+    "GENERADO",
+    "VALIDACION_PENDIENTE",
+    "RECHAZADO",
+  ];
+
+  for (const state of blockedStates) {
+    const candidate = candidateInState(state);
+    const result = recordHumorAssessment(candidate, humorAssessment());
+
+    assert.equal(result.ok, false, `${state} should reject the assessment`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "STATE_NOT_ELIGIBLE");
+    assert.equal(result.error.currentState, state);
+    assert.equal(candidate.state, state);
+    assert.equal(candidate.humorAssessment, undefined);
+  }
+});
+
+test("rejects out-of-range humor note and confidence", () => {
+  const candidate = candidateInState("VALIDO");
+
+  for (const note of [11, -1]) {
+    const result = recordHumorAssessment(candidate, humorAssessment({ note }));
+
+    assert.equal(result.ok, false, `note ${note} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_NOTE");
+    assert.equal(result.error.note, note);
+  }
+
+  for (const confidence of [1.5, -0.1]) {
+    const result = recordHumorAssessment(
+      candidate,
+      humorAssessment({ confidence }),
+    );
+
+    assert.equal(result.ok, false, `confidence ${confidence} should be rejected`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "INVALID_CONFIDENCE");
+    assert.equal(result.error.confidence, confidence);
+  }
+});
+
+test("rejects a humor assessment without textual evidence citations", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const noFragments = recordHumorAssessment(
+    candidate,
+    humorAssessment({ fragments: [] }),
+  );
+
+  assert.equal(noFragments.ok, false);
+  if (!noFragments.ok) {
+    assert.equal(noFragments.error.code, "INVALID_HUMOR_FIELD");
+    assert.equal(noFragments.error.path, "$.fragments");
+  }
+
+  const blankFragment = recordHumorAssessment(
+    candidate,
+    humorAssessment({
+      fragments: [{ slot: "V4", fragment: "   ", reason: "justificación" }],
+    }),
+  );
+
+  assert.equal(blankFragment.ok, false);
+  if (!blankFragment.ok) {
+    assert.equal(blankFragment.error.code, "INVALID_HUMOR_FIELD");
+    assert.equal(blankFragment.error.path, "$.fragments");
+  }
+
+  const blankReason = recordHumorAssessment(
+    candidate,
+    humorAssessment({
+      fragments: [{ slot: "V4", fragment: "solo el olor", reason: "  " }],
+    }),
+  );
+
+  assert.equal(blankReason.ok, false);
+  if (!blankReason.ok) {
+    assert.equal(blankReason.error.code, "INVALID_HUMOR_FIELD");
+    assert.equal(blankReason.error.path, "$.fragments");
+  }
+});
+
+test("rejects invalid humor mechanism and clarity labels", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const badMechanism = recordHumorAssessment(
+    candidate,
+    humorAssessment({ mechanism: "CHISTE_MALO" as HumorAssessmentRecord["mechanism"] }),
+  );
+
+  assert.equal(badMechanism.ok, false);
+  if (!badMechanism.ok) {
+    assert.equal(badMechanism.error.code, "INVALID_HUMOR_FIELD");
+    assert.equal(badMechanism.error.path, "$.mechanism");
+  }
+
+  const badClarity = recordHumorAssessment(
+    candidate,
+    humorAssessment({ clarity: "OSCURA" as HumorAssessmentRecord["clarity"] }),
+  );
+
+  assert.equal(badClarity.ok, false);
+  if (!badClarity.ok) {
+    assert.equal(badClarity.error.code, "INVALID_HUMOR_FIELD");
+    assert.equal(badClarity.error.path, "$.clarity");
+  }
+});
+
+
+test("records a ripio detection without changing state or hard validation results", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordRipioDetection(candidate, ripioDetection());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("Expected successful result in test");
+
+  assert.equal(result.value.state, "VALIDO");
+  assert.equal(result.value.plan, candidate.plan);
+  assert.equal(result.value.provenance, candidate.provenance);
+  assert.equal(result.value.validationCompletion, candidate.validationCompletion);
+  assert.deepEqual(result.value.rejections, candidate.rejections);
+  assert.deepEqual(result.value.ripioDetection, ripioDetection());
+  assert.equal(result.value.events.at(-1)?.type, "RIPIO_DETECTION_RECORDED");
+  assert.deepEqual(result.value.events.at(-1)?.ripioDetection, result.value.ripioDetection);
+  assert.equal(Object.isFrozen(result.value), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection?.fragments), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection?.signals), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection?.llm.fragments), true);
+});
+
+test("rejects ripio detection when a hard blocker is present", () => {
+  const blockedStates: readonly QuatrainCandidate["state"][] = [
+    "GENERADO",
+    "VALIDACION_PENDIENTE",
+    "RECHAZADO",
+  ];
+
+  for (const state of blockedStates) {
+    const candidate = candidateInState(state);
+    const result = recordRipioDetection(candidate, ripioDetection());
+
+    assert.equal(result.ok, false, `${state} should reject the detection`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "STATE_NOT_ELIGIBLE");
+    assert.equal(result.error.currentState, state);
+    assert.equal(candidate.state, state);
+    assert.equal(candidate.ripioDetection, undefined);
+  }
+});
+
+test("rejects inconsistent ripio presence relative to severity", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const severityNoneWithPresence = recordRipioDetection(
+    candidate,
+    ripioDetection({ severity: "NINGUNO", presence: true }),
+  );
+
+  assert.equal(severityNoneWithPresence.ok, false);
+  if (!severityNoneWithPresence.ok) {
+    assert.equal(severityNoneWithPresence.error.code, "INCONSISTENT_PRESENCE");
+  }
+
+  const severityLeveWithoutPresence = recordRipioDetection(
+    candidate,
+    ripioDetection({ severity: "LEVE", presence: false }),
+  );
+
+  assert.equal(severityLeveWithoutPresence.ok, false);
+  if (!severityLeveWithoutPresence.ok) {
+    assert.equal(severityLeveWithoutPresence.error.code, "INCONSISTENT_PRESENCE");
+  }
+});
+
+test("rejects unrecognized ripio severity", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordRipioDetection(
+    candidate,
+    ripioDetection({ severity: "ENORME" as RipioSeverity }),
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "INVALID_SEVERITY");
+  }
+});
+
+test("rejects malformed ripio fragments, signals and LLM verdict", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const invalidFragmentSlot = recordRipioDetection(
+    candidate,
+    ripioDetection({
+      fragments: [{ slot: "V5" as VerseSlot, fragment: "hola", reason: "raro" }],
+    }),
+  );
+
+  assert.equal(invalidFragmentSlot.ok, false);
+  if (!invalidFragmentSlot.ok) {
+    assert.equal(invalidFragmentSlot.error.code, "INVALID_FRAGMENT");
+  }
+
+  const invalidSignal = recordRipioDetection(
+    candidate,
+    ripioDetection({
+      signals: [
+        {
+          patternId: "",
+          patternVersion: "0.1.0",
+          slot: "V3",
+          fragment: "es que",
+          severity: "LEVE",
+          reason: "relleno",
+        },
+      ],
+    }),
+  );
+
+  assert.equal(invalidSignal.ok, false);
+  if (!invalidSignal.ok) {
+    assert.equal(invalidSignal.error.code, "INVALID_SIGNAL");
+  }
+
+  const invalidLlmConfidence = recordRipioDetection(
+    candidate,
+    ripioDetection({
+      llm: {
+        severity: "NINGUNO",
+        confidence: 2,
+        fragments: [],
+        explanation: "nada",
+      },
+    }),
+  );
+
+  assert.equal(invalidLlmConfidence.ok, false);
+  if (!invalidLlmConfidence.ok) {
+    assert.equal(invalidLlmConfidence.error.code, "INVALID_LLM");
+    assert.equal(invalidLlmConfidence.error.path, "$.llm.confidence");
+  }
+});
+
+
 
 test("records a vocabulary suitability assessment without changing state", () => {
   const candidate = candidateInState("VALIDO");
@@ -899,7 +1449,7 @@ test("records a coherence assessment without changing state or hard validation r
   const result = recordCoherenceAssessment(candidate, coherenceAssessment());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.state, "VALIDO");
   assert.equal(result.value.plan, candidate.plan);
@@ -1046,7 +1596,7 @@ test("records a naturalness assessment without changing state or hard validation
   const result = recordNaturalnessAssessment(candidate, naturalnessAssessment());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.state, "VALIDO");
   assert.equal(result.value.plan, candidate.plan);
@@ -1169,5 +1719,9 @@ test("rejects malformed naturalness observations", () => {
     assert.equal(duplicateSlot.error.path, "$.observations[1]");
   }
 });
+
+
+
+
 
 
