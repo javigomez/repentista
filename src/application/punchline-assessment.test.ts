@@ -190,7 +190,7 @@ test("returns a traced punchline assessment for a prepared, resolved anchor", as
   const result = await assessPunchline(request());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.note, 9);
   assert.equal(result.value.confidence, 0.9);
@@ -230,7 +230,7 @@ test("scores an unprepared twist low even when it is funny", async () => {
   );
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.note, 3);
   assert.equal(result.value.twistDegree, "FUERTE");
@@ -260,7 +260,7 @@ test("flags a merely descriptive ending as lacking a punchline", async () => {
   );
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.note, 2);
   assert.equal(result.value.twistDegree, "NINGUNO");
@@ -289,7 +289,7 @@ test("awards a solid non-humorous remate without demanding comedy", async () => 
   );
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.note, 8);
   assert.equal(result.value.twistDegree, "LEVE");
@@ -427,3 +427,5 @@ test("rejects output that smuggles humor into the punchline assessment", async (
   assert.equal(result.error.code, "LLM_ASSESSMENT_FAILED");
   assert.equal(result.error.cause.code, "INVALID_STRUCTURED_OUTPUT");
 });
+
+

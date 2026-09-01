@@ -6,4 +6,5 @@ export * from "./octonol-meter/index.js";
 export * from "./v4-final-word-selection/index.js";
 export * from "./coherence-assessment/index.js";
 export * from "./punchline-assessment/index.js";
+export * from "./ripio-detection/index.js";
 export * from "./naturalness-assessment/index.js";

@@ -12,6 +12,7 @@ import {
   recordCandidateRepair,
   recordCoherenceAssessment,
   recordNaturalnessAssessment,
+  recordRipioDetection,
   recordPunchlineAssessment,
   toQuatrainCandidateSnapshot,
   transitionQuatrainCandidate,
@@ -21,6 +22,8 @@ import {
   type CandidateRepairInput,
   type CoherenceAssessmentRecord,
   type NaturalnessAssessmentRecord,
+  type RipioDetectionRecord,
+  type RipioSeverity,
   type PunchlineAssessmentRecord,
   type QuatrainCandidate,
   type QuatrainCandidateInput,
@@ -387,7 +390,7 @@ test("creates a complete auditable candidate with four ordered verse slots", () 
   const result = createQuatrainCandidate(input);
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.id, "candidate-001");
   assert.equal(result.value.batchId, "batch-001");
@@ -552,7 +555,7 @@ test("keeps validator rejection evidence localizable and append-only in the even
   const result = transitionQuatrainCandidate(pending, hardValidationRejectedTransition());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.state, "RECHAZADO");
   assert.deepEqual(result.value.rejections, [
@@ -606,12 +609,12 @@ test("records repairs as immutable history without overwriting prior attempts", 
   const repairedOnce = recordCandidateRepair(rejected, firstRepair);
 
   assert.equal(repairedOnce.ok, true);
-  if (!repairedOnce.ok) return;
+  if (!repairedOnce.ok) throw new Error("Expected successful result in test");
 
   const repairedTwice = recordCandidateRepair(repairedOnce.value, secondRepair);
 
   assert.equal(repairedTwice.ok, true);
-  if (!repairedTwice.ok) return;
+  if (!repairedTwice.ok) throw new Error("Expected successful result in test");
 
   assert.deepEqual(rejected.repairs, []);
   assert.deepEqual(
@@ -638,7 +641,7 @@ test("creates candidates with deterministic ID and clock collaborators", () => {
   const result = createQuatrainCandidateWithCollaborators(input, collaborators);
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.id, "candidate-fixed-001");
   assert.equal(result.value.provenance.createdAt, CREATED_AT);
@@ -730,7 +733,7 @@ test("serializes rejection and repair history without sharing mutable arrays", (
   const repaired = recordCandidateRepair(rejected, repair);
 
   assert.equal(repaired.ok, true);
-  if (!repaired.ok) return;
+  if (!repaired.ok) throw new Error("Expected successful result in test");
 
   const snapshot = toQuatrainCandidateSnapshot(repaired.value);
 
@@ -769,7 +772,7 @@ test("records a punchline assessment without changing state or hard validation r
   const result = recordPunchlineAssessment(candidate, punchlineAssessment());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.state, "VALIDO");
   assert.equal(result.value.plan, candidate.plan);
@@ -928,12 +931,204 @@ test("rejects invalid twist degree and context dependency labels", () => {
 });
 
 
+function ripioDetection(
+  overrides: Partial<RipioDetectionRecord> = {},
+): RipioDetectionRecord {
+  return {
+    presence: true,
+    severity: "LEVE",
+    fragments: [
+      { slot: "V3", fragment: "es que", reason: "muletilla de relleno" },
+    ],
+    signals: [
+      {
+        patternId: "ripio.filler",
+        patternVersion: "0.1.0",
+        slot: "V3",
+        fragment: "es que",
+        severity: "LEVE",
+        reason: "muletilla de relleno",
+      },
+    ],
+    llm: {
+      severity: "NINGUNO",
+      confidence: 0.9,
+      fragments: [],
+      explanation: "No se aprecia ripio adicional.",
+    },
+    rubricVersion: "0.1.0",
+    prompt: { id: "ripio-detection-rubric", version: "0.1.0" },
+    model: { provider: "openai", name: "gpt-5" },
+    assessedAt: "2026-08-30T09:22:00.000Z",
+    providerRequestId: "req-ripio-001",
+    ...overrides,
+  };
+}
+
+test("identifies states that have already passed hard validation", () => {
+  const passed = [
+    "VALIDO",
+    "PUNTUADO",
+    "BAJO_UMBRAL",
+    "SELECCIONADO",
+    "APROBADO",
+    "RECHAZADO_EDITORIAL",
+    "EXPORTADO",
+  ] as const;
+  const blocked = ["GENERADO", "VALIDACION_PENDIENTE", "RECHAZADO"] as const;
+
+  for (const state of passed) {
+    assert.equal(hasPassedHardValidation(state), true, `${state} should count as validated`);
+  }
+
+  for (const state of blocked) {
+    assert.equal(hasPassedHardValidation(state), false, `${state} should count as blocked`);
+  }
+});
+
+test("records a ripio detection without changing state or hard validation results", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordRipioDetection(candidate, ripioDetection());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("Expected successful result in test");
+
+  assert.equal(result.value.state, "VALIDO");
+  assert.equal(result.value.plan, candidate.plan);
+  assert.equal(result.value.provenance, candidate.provenance);
+  assert.equal(result.value.validationCompletion, candidate.validationCompletion);
+  assert.deepEqual(result.value.rejections, candidate.rejections);
+  assert.deepEqual(result.value.ripioDetection, ripioDetection());
+  assert.equal(result.value.events.at(-1)?.type, "RIPIO_DETECTION_RECORDED");
+  assert.deepEqual(result.value.events.at(-1)?.ripioDetection, result.value.ripioDetection);
+  assert.equal(Object.isFrozen(result.value), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection?.fragments), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection?.signals), true);
+  assert.equal(Object.isFrozen(result.value.ripioDetection?.llm.fragments), true);
+});
+
+test("rejects ripio detection when a hard blocker is present", () => {
+  const blockedStates: readonly QuatrainCandidate["state"][] = [
+    "GENERADO",
+    "VALIDACION_PENDIENTE",
+    "RECHAZADO",
+  ];
+
+  for (const state of blockedStates) {
+    const candidate = candidateInState(state);
+    const result = recordRipioDetection(candidate, ripioDetection());
+
+    assert.equal(result.ok, false, `${state} should reject the detection`);
+    if (result.ok) continue;
+
+    assert.equal(result.error.code, "STATE_NOT_ELIGIBLE");
+    assert.equal(result.error.currentState, state);
+    assert.equal(candidate.state, state);
+    assert.equal(candidate.ripioDetection, undefined);
+  }
+});
+
+test("rejects inconsistent ripio presence relative to severity", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const severityNoneWithPresence = recordRipioDetection(
+    candidate,
+    ripioDetection({ severity: "NINGUNO", presence: true }),
+  );
+
+  assert.equal(severityNoneWithPresence.ok, false);
+  if (!severityNoneWithPresence.ok) {
+    assert.equal(severityNoneWithPresence.error.code, "INCONSISTENT_PRESENCE");
+  }
+
+  const severityLeveWithoutPresence = recordRipioDetection(
+    candidate,
+    ripioDetection({ severity: "LEVE", presence: false }),
+  );
+
+  assert.equal(severityLeveWithoutPresence.ok, false);
+  if (!severityLeveWithoutPresence.ok) {
+    assert.equal(severityLeveWithoutPresence.error.code, "INCONSISTENT_PRESENCE");
+  }
+});
+
+test("rejects unrecognized ripio severity", () => {
+  const candidate = candidateInState("VALIDO");
+  const result = recordRipioDetection(
+    candidate,
+    ripioDetection({ severity: "ENORME" as RipioSeverity }),
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "INVALID_SEVERITY");
+  }
+});
+
+test("rejects malformed ripio fragments, signals and LLM verdict", () => {
+  const candidate = candidateInState("VALIDO");
+
+  const invalidFragmentSlot = recordRipioDetection(
+    candidate,
+    ripioDetection({
+      fragments: [{ slot: "V5" as VerseSlot, fragment: "hola", reason: "raro" }],
+    }),
+  );
+
+  assert.equal(invalidFragmentSlot.ok, false);
+  if (!invalidFragmentSlot.ok) {
+    assert.equal(invalidFragmentSlot.error.code, "INVALID_FRAGMENT");
+  }
+
+  const invalidSignal = recordRipioDetection(
+    candidate,
+    ripioDetection({
+      signals: [
+        {
+          patternId: "",
+          patternVersion: "0.1.0",
+          slot: "V3",
+          fragment: "es que",
+          severity: "LEVE",
+          reason: "relleno",
+        },
+      ],
+    }),
+  );
+
+  assert.equal(invalidSignal.ok, false);
+  if (!invalidSignal.ok) {
+    assert.equal(invalidSignal.error.code, "INVALID_SIGNAL");
+  }
+
+  const invalidLlmConfidence = recordRipioDetection(
+    candidate,
+    ripioDetection({
+      llm: {
+        severity: "NINGUNO",
+        confidence: 2,
+        fragments: [],
+        explanation: "nada",
+      },
+    }),
+  );
+
+  assert.equal(invalidLlmConfidence.ok, false);
+  if (!invalidLlmConfidence.ok) {
+    assert.equal(invalidLlmConfidence.error.code, "INVALID_LLM");
+    assert.equal(invalidLlmConfidence.error.path, "$.llm.confidence");
+  }
+});
+
+
+
 test("records a coherence assessment without changing state or hard validation results", () => {
   const candidate = candidateInState("VALIDO");
   const result = recordCoherenceAssessment(candidate, coherenceAssessment());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.state, "VALIDO");
   assert.equal(result.value.plan, candidate.plan);
@@ -1080,7 +1275,7 @@ test("records a naturalness assessment without changing state or hard validation
   const result = recordNaturalnessAssessment(candidate, naturalnessAssessment());
 
   assert.equal(result.ok, true);
-  if (!result.ok) return;
+  if (!result.ok) throw new Error("Expected successful result in test");
 
   assert.equal(result.value.state, "VALIDO");
   assert.equal(result.value.plan, candidate.plan);
@@ -1203,4 +1398,7 @@ test("rejects malformed naturalness observations", () => {
     assert.equal(duplicateSlot.error.path, "$.observations[1]");
   }
 });
+
+
+
 
