@@ -56,6 +56,10 @@ export interface CandidateVersePlanInput {
   readonly plannedFinalWord: string;
 }
 
+export type CoherenceAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: CoherenceAssessmentError };
+
 export interface CandidatePlanInput {
   readonly rhymeScheme: string;
   readonly metricPositions: number;
@@ -189,7 +193,16 @@ export type CandidateLifecycleTransitionInput =
     };
 
 export interface CandidateLifecycleEvent {
-  readonly type: CandidateLifecycleTransitionInput["type"] | "CANDIDATE_CREATED" | "REPAIR_RECORDED";
+  readonly type:
+    | CandidateLifecycleTransitionInput["type"]
+    | "CANDIDATE_CREATED"
+    | "REPAIR_RECORDED"
+    | "PUNCHLINE_RECORDED"
+    | "COHERENCE_RECORDED"
+    | "RIPIO_DETECTION_RECORDED"
+    | "HUMOR_RECORDED"
+    | "VOCABULARY_SUITABILITY_RECORDED"
+    | "NATURALNESS_RECORDED";
   readonly at: string;
   readonly validators?: readonly ComponentVersion[];
   readonly diagnostics?: readonly ValidatorDiagnosticInput[];
@@ -206,6 +219,12 @@ export interface CandidateLifecycleEvent {
   readonly packageId?: string;
   readonly contractVersion?: string;
   readonly repair?: CandidateRepairInput;
+  readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly humorAssessment?: HumorAssessmentRecord;
+  readonly ripioDetection?: RipioDetectionRecord;
+  readonly vocabularySuitabilityAssessment?: VocabularySuitabilityAssessmentRecord;
+  readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
+  readonly punchlineAssessment?: PunchlineAssessmentRecord;
 }
 
 export interface ValidationRequestRecord {
@@ -252,6 +271,360 @@ export interface ExportRecord {
   readonly contractVersion: string;
 }
 
+export const PUNCHLINE_TWIST_DEGREES = Object.freeze([
+  "NINGUNO",
+  "LEVE",
+  "MODERADO",
+  "FUERTE",
+] as const);
+
+export type PunchlineTwistDegree = (typeof PUNCHLINE_TWIST_DEGREES)[number];
+
+export const PUNCHLINE_CONTEXT_DEPENDENCIES = Object.freeze([
+  "NULA",
+  "PARCIAL",
+  "TOTAL",
+] as const);
+
+export type PunchlineContextDependency = (typeof PUNCHLINE_CONTEXT_DEPENDENCIES)[number];
+
+export interface PunchlineAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface PunchlineAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly expectation: string;
+  readonly expectationEvidence: readonly string[];
+  readonly resolution: string;
+  readonly resolutionEvidence: string;
+  readonly twistDegree: PunchlineTwistDegree;
+  readonly contextDependency: PunchlineContextDependency;
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: PunchlineAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type PunchlineAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_PUNCHLINE_FIELD";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type PunchlineAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: PunchlineAssessmentError };
+
+export const HUMOR_MECHANISMS = Object.freeze([
+  "SORPRESA",
+  "ABSURDO",
+  "IMAGEN",
+  "JUEGO_CONCEPTUAL",
+] as const);
+
+export type HumorMechanism = (typeof HUMOR_MECHANISMS)[number];
+
+export const HUMOR_CLARITIES = Object.freeze(["CLARA", "AMBIGUA"] as const);
+
+export type HumorClarity = (typeof HUMOR_CLARITIES)[number];
+
+export interface HumorFragment {
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly reason: string;
+}
+
+export interface HumorAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface HumorAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly mechanism: HumorMechanism;
+  readonly clarity: HumorClarity;
+  readonly fragments: readonly HumorFragment[];
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: HumorAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type HumorAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_HUMOR_FIELD";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type HumorAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: HumorAssessmentError };
+
+
+export const VOCABULARY_SUITABILITY_ISSUES = Object.freeze([
+  "DEMASIADO_CULTO",
+  "ABSTRACTO",
+  "INFANTILIZANTE",
+  "AMBIGUO_CONTEXTUAL",
+] as const);
+
+export type VocabularySuitabilityIssue = (typeof VOCABULARY_SUITABILITY_ISSUES)[number];
+
+export interface VocabularyWordMetadata {
+  readonly slot: VerseSlot;
+  readonly form: string;
+  readonly normalizedForm: string;
+  readonly dictionaryLevel: string;
+}
+
+export interface VocabularyFlaggedWord {
+  readonly slot: VerseSlot;
+  readonly form: string;
+  readonly issue: VocabularySuitabilityIssue;
+  readonly reason: string;
+  readonly alternatives: readonly string[];
+}
+
+export interface VocabularySuitabilityModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface VocabularySuitabilityAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly wordMetadata: readonly VocabularyWordMetadata[];
+  readonly flaggedWords: readonly VocabularyFlaggedWord[];
+  readonly dictionaryVersion: string;
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: VocabularySuitabilityModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type VocabularySuitabilityAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_VOCABULARY_FIELD";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type VocabularySuitabilityAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: VocabularySuitabilityAssessmentError };
+
+
+export interface CoherenceTransitionEvidence {
+  readonly from: VerseSlot;
+  readonly to: VerseSlot;
+  readonly relation: string;
+  readonly evidence: string;
+}
+
+export interface CoherenceAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface CoherenceAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly transitions: readonly CoherenceTransitionEvidence[];
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: CoherenceAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type CoherenceAssessmentError =
+  | { readonly code: "STATE_NOT_ELIGIBLE"; readonly message: string; readonly currentState: QuatrainCandidateState }
+  | { readonly code: "INVALID_NOTE"; readonly message: string; readonly note: number }
+  | { readonly code: "INVALID_CONFIDENCE"; readonly message: string; readonly confidence: number }
+  | { readonly code: "INVALID_TRANSITION"; readonly message: string; readonly path: string };
+
+export interface NaturalnessObservation {
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly reason: string;
+}
+
+export interface NaturalnessAssessmentModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface NaturalnessAssessmentRecord {
+  readonly note: number;
+  readonly confidence: number;
+  readonly observations: readonly NaturalnessObservation[];
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: NaturalnessAssessmentModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type NaturalnessAssessmentError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_NOTE";
+      readonly message: string;
+      readonly note: number;
+    }
+  | {
+      readonly code: "INVALID_CONFIDENCE";
+      readonly message: string;
+      readonly confidence: number;
+    }
+  | {
+      readonly code: "INVALID_OBSERVATION";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type NaturalnessAssessmentRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: NaturalnessAssessmentError };
+
+export type RipioSeverity = "NINGUNO" | "LEVE" | "MODERADO" | "GRAVE";
+
+export interface RipioFragment {
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly reason: string;
+}
+
+export interface RipioSignal {
+  readonly patternId: string;
+  readonly patternVersion: string;
+  readonly slot: VerseSlot;
+  readonly fragment: string;
+  readonly severity: RipioSeverity;
+  readonly reason: string;
+}
+
+export interface RipioLlmVerdict {
+  readonly severity: RipioSeverity;
+  readonly confidence: number;
+  readonly fragments: readonly RipioFragment[];
+  readonly explanation: string;
+}
+
+export interface RipioDetectionModel {
+  readonly provider: string;
+  readonly name: string;
+}
+
+export interface RipioDetectionRecord {
+  readonly presence: boolean;
+  readonly severity: RipioSeverity;
+  readonly fragments: readonly RipioFragment[];
+  readonly signals: readonly RipioSignal[];
+  readonly llm: RipioLlmVerdict;
+  readonly rubricVersion: string;
+  readonly prompt: PromptReference;
+  readonly model: RipioDetectionModel;
+  readonly assessedAt: string;
+  readonly providerRequestId: string;
+}
+
+export type RipioDetectionError =
+  | {
+      readonly code: "STATE_NOT_ELIGIBLE";
+      readonly message: string;
+      readonly currentState: QuatrainCandidateState;
+    }
+  | {
+      readonly code: "INVALID_SEVERITY";
+      readonly message: string;
+      readonly severity: RipioSeverity;
+    }
+  | {
+      readonly code: "INCONSISTENT_PRESENCE";
+      readonly message: string;
+      readonly severity: RipioSeverity;
+      readonly presence: boolean;
+    }
+  | {
+      readonly code: "INVALID_FRAGMENT";
+      readonly message: string;
+      readonly path: string;
+    }
+  | {
+      readonly code: "INVALID_SIGNAL";
+      readonly message: string;
+      readonly path: string;
+    }
+  | {
+      readonly code: "INVALID_LLM";
+      readonly message: string;
+      readonly path: string;
+    };
+
+export type RipioDetectionRecordResult =
+  | { readonly ok: true; readonly value: QuatrainCandidate }
+  | { readonly ok: false; readonly error: RipioDetectionError };
+
+
 export interface CandidatePlan {
   readonly rhymeScheme: string;
   readonly metricPositions: number;
@@ -282,6 +655,12 @@ export interface QuatrainCandidate {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly humorAssessment?: HumorAssessmentRecord;
+  readonly ripioDetection?: RipioDetectionRecord;
+  readonly punchlineAssessment?: PunchlineAssessmentRecord;
+  readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
+  readonly vocabularySuitabilityAssessment?: VocabularySuitabilityAssessmentRecord;
 }
 
 export const QUATRAIN_CANDIDATE_SNAPSHOT_VERSION = "quatrain-candidate-snapshot/v1" as const;
@@ -304,6 +683,12 @@ export interface QuatrainCandidateSnapshot {
   readonly finalistSelection?: FinalistSelectionRecord;
   readonly editorialDecision?: EditorialDecisionRecord;
   readonly exportRecord?: ExportRecord;
+  readonly coherenceAssessment?: CoherenceAssessmentRecord;
+  readonly humorAssessment?: HumorAssessmentRecord;
+  readonly ripioDetection?: RipioDetectionRecord;
+  readonly punchlineAssessment?: PunchlineAssessmentRecord;
+  readonly naturalnessAssessment?: NaturalnessAssessmentRecord;
+  readonly vocabularySuitabilityAssessment?: VocabularySuitabilityAssessmentRecord;
 }
 
 export type CandidateCreationError =
@@ -481,6 +866,189 @@ const freezeExport = (record: ExportRecord): ExportRecord =>
     contractVersion: record.contractVersion,
   });
 
+const freezePunchlineAssessment = (
+  assessment: PunchlineAssessmentRecord,
+): PunchlineAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    expectation: assessment.expectation,
+    expectationEvidence: Object.freeze([...assessment.expectationEvidence]),
+    resolution: assessment.resolution,
+    resolutionEvidence: assessment.resolutionEvidence,
+    twistDegree: assessment.twistDegree,
+    contextDependency: assessment.contextDependency,
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
+const freezeRipioFragment = (fragment: RipioFragment): RipioFragment =>
+  Object.freeze({
+    slot: fragment.slot,
+    fragment: fragment.fragment,
+    reason: fragment.reason,
+  });
+
+const freezeRipioSignal = (signal: RipioSignal): RipioSignal =>
+  Object.freeze({
+    patternId: signal.patternId,
+    patternVersion: signal.patternVersion,
+    slot: signal.slot,
+    fragment: signal.fragment,
+    severity: signal.severity,
+    reason: signal.reason,
+  });
+
+const freezeRipioLlmVerdict = (llm: RipioLlmVerdict): RipioLlmVerdict =>
+  Object.freeze({
+    severity: llm.severity,
+    confidence: llm.confidence,
+    fragments: Object.freeze(llm.fragments.map(freezeRipioFragment)),
+    explanation: llm.explanation,
+  });
+
+const freezeRipioDetection = (record: RipioDetectionRecord): RipioDetectionRecord =>
+  Object.freeze({
+    presence: record.presence,
+    severity: record.severity,
+    fragments: Object.freeze(record.fragments.map(freezeRipioFragment)),
+    signals: Object.freeze(record.signals.map(freezeRipioSignal)),
+    llm: freezeRipioLlmVerdict(record.llm),
+    rubricVersion: record.rubricVersion,
+    prompt: freezePrompt(record.prompt),
+    model: Object.freeze({
+      provider: record.model.provider,
+      name: record.model.name,
+    }),
+    assessedAt: record.assessedAt,
+    providerRequestId: record.providerRequestId,
+  });
+
+const freezeHumorFragment = (fragment: HumorFragment): HumorFragment =>
+  Object.freeze({
+    slot: fragment.slot,
+    fragment: fragment.fragment,
+    reason: fragment.reason,
+  });
+
+const freezeHumorAssessment = (
+  assessment: HumorAssessmentRecord,
+): HumorAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    mechanism: assessment.mechanism,
+    clarity: assessment.clarity,
+    fragments: Object.freeze(assessment.fragments.map(freezeHumorFragment)),
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
+const freezeVocabularyWordMetadata = (
+  metadata: VocabularyWordMetadata,
+): VocabularyWordMetadata =>
+  Object.freeze({
+    slot: metadata.slot,
+    form: metadata.form,
+    normalizedForm: metadata.normalizedForm,
+    dictionaryLevel: metadata.dictionaryLevel,
+  });
+
+const freezeVocabularyFlaggedWord = (
+  flaggedWord: VocabularyFlaggedWord,
+): VocabularyFlaggedWord =>
+  Object.freeze({
+    slot: flaggedWord.slot,
+    form: flaggedWord.form,
+    issue: flaggedWord.issue,
+    reason: flaggedWord.reason,
+    alternatives: Object.freeze([...flaggedWord.alternatives]),
+  });
+
+const freezeVocabularySuitabilityAssessment = (
+  assessment: VocabularySuitabilityAssessmentRecord,
+): VocabularySuitabilityAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    wordMetadata: Object.freeze(assessment.wordMetadata.map(freezeVocabularyWordMetadata)),
+    flaggedWords: Object.freeze(assessment.flaggedWords.map(freezeVocabularyFlaggedWord)),
+    dictionaryVersion: assessment.dictionaryVersion,
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
+const freezeCoherenceTransition = (
+  transition: CoherenceTransitionEvidence,
+): CoherenceTransitionEvidence =>
+  Object.freeze({
+    from: transition.from,
+    to: transition.to,
+    relation: transition.relation,
+    evidence: transition.evidence,
+  });
+
+const freezeCoherenceAssessment = (
+  assessment: CoherenceAssessmentRecord,
+): CoherenceAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    transitions: Object.freeze(assessment.transitions.map(freezeCoherenceTransition)),
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
+const freezeNaturalnessObservation = (
+  observation: NaturalnessObservation,
+): NaturalnessObservation =>
+  Object.freeze({
+    slot: observation.slot,
+    fragment: observation.fragment,
+    reason: observation.reason,
+  });
+
+const freezeNaturalnessAssessment = (
+  assessment: NaturalnessAssessmentRecord,
+): NaturalnessAssessmentRecord =>
+  Object.freeze({
+    note: assessment.note,
+    confidence: assessment.confidence,
+    observations: Object.freeze(assessment.observations.map(freezeNaturalnessObservation)),
+    rubricVersion: assessment.rubricVersion,
+    prompt: freezePrompt(assessment.prompt),
+    model: Object.freeze({
+      provider: assessment.model.provider,
+      name: assessment.model.name,
+    }),
+    assessedAt: assessment.assessedAt,
+    providerRequestId: assessment.providerRequestId,
+  });
+
 const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
   Object.freeze({
     ...event,
@@ -495,6 +1063,12 @@ const freezeEvent = (event: CandidateLifecycleEvent): CandidateLifecycleEvent =>
       ? {}
       : { breakdown: Object.freeze(event.breakdown.map(freezeScoreBreakdown)) }),
     ...(event.repair === undefined ? {} : { repair: freezeRepair(event.repair) }),
+    ...(event.punchlineAssessment === undefined
+      ? {}
+      : { punchlineAssessment: freezePunchlineAssessment(event.punchlineAssessment) }),
+    ...(event.naturalnessAssessment === undefined
+      ? {}
+      : { naturalnessAssessment: freezeNaturalnessAssessment(event.naturalnessAssessment) }),
   });
 
 const freezePlanSlot = (slot: CandidateVersePlanInput): CandidateVersePlanInput =>
@@ -698,6 +1272,12 @@ export function toQuatrainCandidateSnapshot(
       ? {}
       : { editorialDecision: freezeEditorialDecision(candidate.editorialDecision) }),
     ...(candidate.exportRecord === undefined ? {} : { exportRecord: freezeExport(candidate.exportRecord) }),
+    ...(candidate.punchlineAssessment === undefined
+      ? {}
+      : { punchlineAssessment: freezePunchlineAssessment(candidate.punchlineAssessment) }),
+    ...(candidate.naturalnessAssessment === undefined
+      ? {}
+      : { naturalnessAssessment: freezeNaturalnessAssessment(candidate.naturalnessAssessment) }),
   });
 }
 
@@ -929,6 +1509,816 @@ export function recordCandidateRepair(
       state: candidate.state,
       events: Object.freeze([...candidate.events, repairEvent]),
       repairs: Object.freeze([...candidate.repairs, repair]),
+    }),
+  });
+}
+
+const HARD_VALIDATION_PASSED_STATES: readonly QuatrainCandidateState[] = Object.freeze([
+  "VALIDO",
+  "PUNTUADO",
+  "BAJO_UMBRAL",
+  "SELECCIONADO",
+  "APROBADO",
+  "RECHAZADO_EDITORIAL",
+  "EXPORTADO",
+]);
+
+export function hasPassedHardValidation(state: QuatrainCandidateState): boolean {
+  return HARD_VALIDATION_PASSED_STATES.includes(state);
+}
+
+const HUMOR_NOTE_MINIMUM = 0;
+const HUMOR_NOTE_MAXIMUM = 10;
+const HUMOR_CONFIDENCE_MINIMUM = 0;
+const HUMOR_CONFIDENCE_MAXIMUM = 1;
+
+const HUMOR_MECHANISM_SET: ReadonlySet<HumorMechanism> = new Set(HUMOR_MECHANISMS);
+const HUMOR_CLARITY_SET: ReadonlySet<HumorClarity> = new Set(HUMOR_CLARITIES);
+
+export function recordHumorAssessment(
+  candidate: QuatrainCandidate,
+  assessment: HumorAssessmentRecord,
+): HumorAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de humor a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < HUMOR_NOTE_MINIMUM ||
+    assessment.note > HUMOR_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${HUMOR_NOTE_MINIMUM} y ${HUMOR_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < HUMOR_CONFIDENCE_MINIMUM ||
+    assessment.confidence > HUMOR_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${HUMOR_CONFIDENCE_MINIMUM} y ${HUMOR_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  if (!HUMOR_MECHANISM_SET.has(assessment.mechanism)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_HUMOR_FIELD" as const,
+        message: `El mecanismo humorístico debe ser uno de ${HUMOR_MECHANISMS.join(", ")}.`,
+        path: "$.mechanism",
+      }),
+    });
+  }
+
+  if (!HUMOR_CLARITY_SET.has(assessment.clarity)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_HUMOR_FIELD" as const,
+        message: `La claridad debe ser una de ${HUMOR_CLARITIES.join(", ")}.`,
+        path: "$.clarity",
+      }),
+    });
+  }
+
+  if (
+    assessment.fragments.length === 0 ||
+    assessment.fragments.some(
+      (fragment) =>
+        fragment.fragment.trim().length === 0 ||
+        fragment.reason.trim().length === 0,
+    )
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_HUMOR_FIELD" as const,
+        message:
+          "La evaluación debe citar fragmentos textuales con su causa para justificar el mecanismo observado.",
+        path: "$.fragments",
+      }),
+    });
+  }
+
+  const frozen = freezeHumorAssessment(assessment);
+  const event = freezeEvent({
+    type: "HUMOR_RECORDED",
+    at: assessment.assessedAt,
+    humorAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      humorAssessment: frozen,
+    }),
+  });
+}
+
+const COHERENCE_NOTE_MINIMUM = 0;
+const COHERENCE_NOTE_MAXIMUM = 15;
+const COHERENCE_CONFIDENCE_MINIMUM = 0;
+const COHERENCE_CONFIDENCE_MAXIMUM = 1;
+
+const COHERENCE_TRANSITION_STEPS: readonly { readonly from: VerseSlot; readonly to: VerseSlot }[] =
+  Object.freeze([
+    Object.freeze({ from: "V1" as VerseSlot, to: "V2" as VerseSlot }),
+    Object.freeze({ from: "V2" as VerseSlot, to: "V3" as VerseSlot }),
+    Object.freeze({ from: "V3" as VerseSlot, to: "V4" as VerseSlot }),
+  ]);
+const RIPIO_SEVERITIES: readonly RipioSeverity[] = Object.freeze([
+  "NINGUNO",
+  "LEVE",
+  "MODERADO",
+  "GRAVE",
+]);
+
+const RIPIO_SEVERITY_SET: ReadonlySet<RipioSeverity> = new Set(RIPIO_SEVERITIES);
+
+const RIPIO_CONFIDENCE_MINIMUM = 0;
+const RIPIO_CONFIDENCE_MAXIMUM = 1;
+
+const isRipioSeverity = (value: unknown): value is RipioSeverity =>
+  typeof value === "string" && RIPIO_SEVERITY_SET.has(value as RipioSeverity);
+
+const ripioInvalidFragmentError = (path: string, message: string): RipioDetectionError =>
+  Object.freeze({
+    code: "INVALID_FRAGMENT" as const,
+    message,
+    path,
+  });
+
+const validateRipioFragments = (
+  fragments: readonly RipioFragment[],
+  pathPrefix: string,
+): RipioDetectionError | undefined => {
+  const seen = new Set<string>();
+
+  for (const [index, fragment] of fragments.entries()) {
+    const path = `${pathPrefix}[${index}]`;
+
+    if (!expectedSlots.includes(fragment.slot)) {
+      return ripioInvalidFragmentError(
+        `${path}.slot`,
+        `El fragmento ${path} usa un slot no reconocido.`,
+      );
+    }
+
+    if (fragment.fragment.trim().length === 0) {
+      return ripioInvalidFragmentError(
+        `${path}.fragment`,
+        `El fragmento ${path} debe citar un texto no vacío.`,
+      );
+    }
+
+    if (fragment.reason.trim().length === 0) {
+      return ripioInvalidFragmentError(
+        `${path}.reason`,
+        `El fragmento ${path} debe incluir una razón observable.`,
+      );
+    }
+
+    const key = `${fragment.slot}\u0000${fragment.fragment.trim()}`;
+
+    if (seen.has(key)) {
+      return ripioInvalidFragmentError(path, `El fragmento ${path} duplica un fragmento ya citado.`);
+    }
+
+    seen.add(key);
+  }
+
+  return undefined;
+};
+
+const validateRipioSignals = (
+  signals: readonly RipioSignal[],
+): RipioDetectionError | undefined => {
+  const seen = new Set<string>();
+
+  for (const [index, signal] of signals.entries()) {
+    const path = `$.signals[${index}]`;
+
+    if (signal.patternId.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe declarar un identificador de patrón.`,
+        path,
+      });
+    }
+
+    if (signal.patternVersion.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe declarar una versión de patrón.`,
+        path,
+      });
+    }
+
+    if (!expectedSlots.includes(signal.slot)) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} usa un slot no reconocido.`,
+        path,
+      });
+    }
+
+    if (signal.fragment.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe citar un fragmento no vacío.`,
+        path,
+      });
+    }
+
+    if (!isRipioSeverity(signal.severity)) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} usa una severidad no reconocida.`,
+        path,
+      });
+    }
+
+    if (signal.reason.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} debe incluir una razón observable.`,
+        path,
+      });
+    }
+
+    const key = `${signal.patternId}\u0000${signal.slot}\u0000${signal.fragment.trim()}`;
+
+    if (seen.has(key)) {
+      return Object.freeze({
+        code: "INVALID_SIGNAL" as const,
+        message: `La señal ${path} duplica una señal ya declarada.`,
+        path,
+      });
+    }
+
+    seen.add(key);
+  }
+
+  return undefined;
+};
+
+const validateRipioLlmVerdict = (llm: RipioLlmVerdict): RipioDetectionError | undefined => {
+  if (!isRipioSeverity(llm.severity)) {
+    return Object.freeze({
+      code: "INVALID_LLM" as const,
+      message: `El juicio LLM usa una severidad no reconocida: ${String(llm.severity)}.`,
+      path: "$.llm.severity",
+    });
+  }
+
+  if (
+    !Number.isFinite(llm.confidence) ||
+    llm.confidence < RIPIO_CONFIDENCE_MINIMUM ||
+    llm.confidence > RIPIO_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      code: "INVALID_LLM" as const,
+      message: `La confianza del LLM debe estar entre ${RIPIO_CONFIDENCE_MINIMUM} y ${RIPIO_CONFIDENCE_MAXIMUM}.`,
+      path: "$.llm.confidence",
+    });
+  }
+
+  if (llm.explanation.trim().length === 0) {
+    return Object.freeze({
+      code: "INVALID_LLM" as const,
+      message: "El juicio LLM debe incluir una explicación breve.",
+      path: "$.llm.explanation",
+    });
+  }
+
+  return validateRipioFragments(llm.fragments, "$.llm.fragments");
+};
+
+export function recordRipioDetection(
+  candidate: QuatrainCandidate,
+  record: RipioDetectionRecord,
+): RipioDetectionRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una detección de ripio a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (!isRipioSeverity(record.severity)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_SEVERITY" as const,
+        message: `La severidad no es un valor reconocido: ${String(record.severity)}.`,
+        severity: record.severity,
+      }),
+    });
+  }
+
+  if (record.presence !== (record.severity !== "NINGUNO")) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INCONSISTENT_PRESENCE" as const,
+        message: `La presencia debe ser coherente con la severidad ${record.severity}.`,
+        severity: record.severity,
+        presence: record.presence,
+      }),
+    });
+  }
+
+  const fragmentsError = validateRipioFragments(record.fragments, "$.fragments");
+
+  if (fragmentsError !== undefined) {
+    return Object.freeze({ ok: false as const, error: fragmentsError });
+  }
+
+  const signalsError = validateRipioSignals(record.signals);
+
+  if (signalsError !== undefined) {
+    return Object.freeze({ ok: false as const, error: signalsError });
+  }
+
+  const llmError = validateRipioLlmVerdict(record.llm);
+
+  if (llmError !== undefined) {
+    return Object.freeze({ ok: false as const, error: llmError });
+  }
+
+  const frozen = freezeRipioDetection(record);
+  const event = freezeEvent({
+    type: "RIPIO_DETECTION_RECORDED",
+    at: record.assessedAt,
+    ripioDetection: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      ripioDetection: frozen,
+    }),
+  });
+}
+
+const NATURALNESS_NOTE_MINIMUM = 0;
+const NATURALNESS_NOTE_MAXIMUM = 20;
+const NATURALNESS_CONFIDENCE_MINIMUM = 0;
+const NATURALNESS_CONFIDENCE_MAXIMUM = 1;
+
+const validateCoherenceTransitions = (
+  transitions: readonly CoherenceTransitionEvidence[],
+): CoherenceAssessmentError | undefined => {
+  if (transitions.length !== COHERENCE_TRANSITION_STEPS.length) {
+    return Object.freeze({
+      code: "INVALID_TRANSITION" as const,
+      message: "La evaluación debe describir exactamente las transiciones V1→V2, V2→V3 y V3→V4.",
+      path: "$.transitions",
+    });
+  }
+
+  for (const [index, transition] of transitions.entries()) {
+    const expected = COHERENCE_TRANSITION_STEPS[index];
+    const path = `$.transitions[${index}]`;
+
+    if (expected === undefined || transition.from !== expected.from || transition.to !== expected.to) {
+      const expectedStep =
+        expected === undefined ? "V?" : `${expected.from}→${expected.to}`;
+
+      return Object.freeze({
+        code: "INVALID_TRANSITION" as const,
+        message: `La transición ${path} debe conectar ${expectedStep}.`,
+        path,
+      });
+    }
+
+    if (transition.relation.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_TRANSITION" as const,
+        message: `La transición ${path} debe declarar un tipo de relación.`,
+        path,
+      });
+    }
+
+    if (transition.evidence.trim().length === 0) {
+      return Object.freeze({
+        code: "INVALID_TRANSITION" as const,
+        message: `La transición ${path} debe citar un referente o vínculo observable.`,
+        path,
+      });
+    }
+  }
+
+  return undefined;
+};
+
+export function recordCoherenceAssessment(
+  candidate: QuatrainCandidate,
+  assessment: CoherenceAssessmentRecord,
+): CoherenceAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de coherencia a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < COHERENCE_NOTE_MINIMUM ||
+    assessment.note > COHERENCE_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${COHERENCE_NOTE_MINIMUM} y ${COHERENCE_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < COHERENCE_CONFIDENCE_MINIMUM ||
+    assessment.confidence > COHERENCE_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${COHERENCE_CONFIDENCE_MINIMUM} y ${COHERENCE_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  const transitionError = validateCoherenceTransitions(assessment.transitions);
+
+  if (transitionError !== undefined) {
+    return Object.freeze({ ok: false as const, error: transitionError });
+  }
+
+  const frozen = freezeCoherenceAssessment(assessment);
+  const event = freezeEvent({
+    type: "COHERENCE_RECORDED",
+    at: assessment.assessedAt,
+    coherenceAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      coherenceAssessment: frozen,
+    }),
+  });
+}
+
+const validateNaturalnessObservations = (
+  observations: readonly NaturalnessObservation[],
+): NaturalnessAssessmentError | undefined => {
+  const seenSlots = new Set<VerseSlot>();
+
+  for (const [index, observation] of observations.entries()) {
+    const path = `$.observations[${index}]`;
+    if (!expectedSlots.includes(observation.slot)) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} usa un slot no reconocido.`, path });
+    }
+    if (seenSlots.has(observation.slot)) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} repite el slot ${observation.slot}.`, path });
+    }
+    if (observation.fragment.trim().length === 0) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} debe citar un fragmento no vacío.`, path });
+    }
+    if (observation.reason.trim().length === 0) {
+      return Object.freeze({ code: "INVALID_OBSERVATION" as const, message: `La observación ${path} debe incluir una razón observable.`, path });
+    }
+    seenSlots.add(observation.slot);
+  }
+  return undefined;
+};
+
+export function recordNaturalnessAssessment(
+  candidate: QuatrainCandidate,
+  assessment: NaturalnessAssessmentRecord,
+): NaturalnessAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({ ok: false as const, error: Object.freeze({
+      code: "STATE_NOT_ELIGIBLE" as const,
+      message: `No se puede adjuntar una evaluación de naturalidad a un candidato en estado ${candidate.state}.`,
+      currentState: candidate.state,
+    }) });
+  }
+  if (!Number.isInteger(assessment.note) || assessment.note < NATURALNESS_NOTE_MINIMUM || assessment.note > NATURALNESS_NOTE_MAXIMUM) {
+    return Object.freeze({ ok: false as const, error: Object.freeze({
+      code: "INVALID_NOTE" as const,
+      message: `La nota debe ser un entero entre ${NATURALNESS_NOTE_MINIMUM} y ${NATURALNESS_NOTE_MAXIMUM}.`,
+      note: assessment.note,
+    }) });
+  }
+  if (!Number.isFinite(assessment.confidence) || assessment.confidence < NATURALNESS_CONFIDENCE_MINIMUM || assessment.confidence > NATURALNESS_CONFIDENCE_MAXIMUM) {
+    return Object.freeze({ ok: false as const, error: Object.freeze({
+      code: "INVALID_CONFIDENCE" as const,
+      message: `La confianza debe estar entre ${NATURALNESS_CONFIDENCE_MINIMUM} y ${NATURALNESS_CONFIDENCE_MAXIMUM}.`,
+      confidence: assessment.confidence,
+    }) });
+  }
+  const observationError = validateNaturalnessObservations(assessment.observations);
+  if (observationError !== undefined) return Object.freeze({ ok: false as const, error: observationError });
+  const frozen = freezeNaturalnessAssessment(assessment);
+  const event = freezeEvent({ type: "NATURALNESS_RECORDED", at: assessment.assessedAt, naturalnessAssessment: frozen });
+  return Object.freeze({ ok: true as const, value: candidateWith(candidate, {
+    state: candidate.state,
+    events: Object.freeze([...candidate.events, event]),
+    naturalnessAssessment: frozen,
+  }) });
+}
+
+const VOCABULARY_NOTE_MINIMUM = 0;
+const VOCABULARY_NOTE_MAXIMUM = 10;
+const VOCABULARY_CONFIDENCE_MINIMUM = 0;
+const VOCABULARY_CONFIDENCE_MAXIMUM = 1;
+
+const VOCABULARY_ISSUE_SET: ReadonlySet<VocabularySuitabilityIssue> = new Set(
+  VOCABULARY_SUITABILITY_ISSUES,
+);
+
+export function recordVocabularySuitabilityAssessment(
+  candidate: QuatrainCandidate,
+  assessment: VocabularySuitabilityAssessmentRecord,
+): VocabularySuitabilityAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de vocabulario a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < VOCABULARY_NOTE_MINIMUM ||
+    assessment.note > VOCABULARY_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${VOCABULARY_NOTE_MINIMUM} y ${VOCABULARY_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < VOCABULARY_CONFIDENCE_MINIMUM ||
+    assessment.confidence > VOCABULARY_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${VOCABULARY_CONFIDENCE_MINIMUM} y ${VOCABULARY_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  if (
+    assessment.flaggedWords.some(
+      (flaggedWord) =>
+        flaggedWord.form.trim().length === 0 ||
+        flaggedWord.reason.trim().length === 0 ||
+        !VOCABULARY_ISSUE_SET.has(flaggedWord.issue) ||
+        flaggedWord.alternatives.some((alternative) => alternative.trim().length === 0),
+    )
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_VOCABULARY_FIELD" as const,
+        message:
+          "La evaluación debe citar palabras problemáticas válidas con su causa observable y alternativas no vacías.",
+        path: "$.flaggedWords",
+      }),
+    });
+  }
+
+  if (
+    assessment.wordMetadata.some(
+      (metadata) =>
+        metadata.form.trim().length === 0 ||
+        metadata.normalizedForm.trim().length === 0 ||
+        metadata.dictionaryLevel.trim().length === 0,
+    )
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_VOCABULARY_FIELD" as const,
+        message: "Los metadatos del diccionario deben citar formas y niveles no vacíos.",
+        path: "$.wordMetadata",
+      }),
+    });
+  }
+
+  const frozen = freezeVocabularySuitabilityAssessment(assessment);
+  const event = freezeEvent({
+    type: "VOCABULARY_SUITABILITY_RECORDED",
+    at: assessment.assessedAt,
+    vocabularySuitabilityAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      vocabularySuitabilityAssessment: frozen,
+    }),
+  });
+}
+
+
+const PUNCHLINE_NOTE_MINIMUM = 0;
+const PUNCHLINE_NOTE_MAXIMUM = 10;
+const PUNCHLINE_CONFIDENCE_MINIMUM = 0;
+const PUNCHLINE_CONFIDENCE_MAXIMUM = 1;
+
+const PUNCHLINE_TWIST_DEGREE_SET: ReadonlySet<PunchlineTwistDegree> = new Set(
+  PUNCHLINE_TWIST_DEGREES,
+);
+
+const PUNCHLINE_CONTEXT_DEPENDENCY_SET: ReadonlySet<PunchlineContextDependency> = new Set(
+  PUNCHLINE_CONTEXT_DEPENDENCIES,
+);
+
+export function recordPunchlineAssessment(
+  candidate: QuatrainCandidate,
+  assessment: PunchlineAssessmentRecord,
+): PunchlineAssessmentRecordResult {
+  if (!hasPassedHardValidation(candidate.state)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "STATE_NOT_ELIGIBLE" as const,
+        message: `No se puede adjuntar una evaluación de remate a un candidato en estado ${candidate.state}.`,
+        currentState: candidate.state,
+      }),
+    });
+  }
+
+  if (
+    !Number.isInteger(assessment.note) ||
+    assessment.note < PUNCHLINE_NOTE_MINIMUM ||
+    assessment.note > PUNCHLINE_NOTE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_NOTE" as const,
+        message: `La nota debe ser un entero entre ${PUNCHLINE_NOTE_MINIMUM} y ${PUNCHLINE_NOTE_MAXIMUM}.`,
+        note: assessment.note,
+      }),
+    });
+  }
+
+  if (
+    !Number.isFinite(assessment.confidence) ||
+    assessment.confidence < PUNCHLINE_CONFIDENCE_MINIMUM ||
+    assessment.confidence > PUNCHLINE_CONFIDENCE_MAXIMUM
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_CONFIDENCE" as const,
+        message: `La confianza debe estar entre ${PUNCHLINE_CONFIDENCE_MINIMUM} y ${PUNCHLINE_CONFIDENCE_MAXIMUM}.`,
+        confidence: assessment.confidence,
+      }),
+    });
+  }
+
+  if (assessment.expectation.trim().length === 0) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe resumir la expectativa previa antes de dar nota.",
+        path: "$.expectation",
+      }),
+    });
+  }
+
+  if (assessment.resolution.trim().length === 0) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe resumir la resolución de V4 antes de dar nota.",
+        path: "$.resolution",
+      }),
+    });
+  }
+
+  if (
+    assessment.expectationEvidence.length === 0 ||
+    assessment.expectationEvidence.some((citation) => citation.trim().length === 0)
+  ) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe citar evidencia textual de V1–V3 que justifique la expectativa.",
+        path: "$.expectationEvidence",
+      }),
+    });
+  }
+
+  if (assessment.resolutionEvidence.trim().length === 0) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: "La evaluación debe citar evidencia textual de V4 que justifique la resolución.",
+        path: "$.resolutionEvidence",
+      }),
+    });
+  }
+
+  if (!PUNCHLINE_TWIST_DEGREE_SET.has(assessment.twistDegree)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: `El grado de giro debe ser uno de ${PUNCHLINE_TWIST_DEGREES.join(", ")}.`,
+        path: "$.twistDegree",
+      }),
+    });
+  }
+
+  if (!PUNCHLINE_CONTEXT_DEPENDENCY_SET.has(assessment.contextDependency)) {
+    return Object.freeze({
+      ok: false as const,
+      error: Object.freeze({
+        code: "INVALID_PUNCHLINE_FIELD" as const,
+        message: `La dependencia del contexto debe ser una de ${PUNCHLINE_CONTEXT_DEPENDENCIES.join(", ")}.`,
+        path: "$.contextDependency",
+      }),
+    });
+  }
+
+  const frozen = freezePunchlineAssessment(assessment);
+  const event = freezeEvent({
+    type: "PUNCHLINE_RECORDED",
+    at: assessment.assessedAt,
+    punchlineAssessment: frozen,
+  });
+
+  return Object.freeze({
+    ok: true as const,
+    value: candidateWith(candidate, {
+      state: candidate.state,
+      events: Object.freeze([...candidate.events, event]),
+      punchlineAssessment: frozen,
     }),
   });
 }
