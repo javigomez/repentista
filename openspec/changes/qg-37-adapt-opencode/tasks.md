@@ -12,7 +12,7 @@
 ## 3. Verify
 
 - [x] 3.1 Add an opt-in headless-server contract test with controlled configuration, verifying default tests remain offline.
-- [ ] 3.2 Run `npm test` and `npm run build`, verifying OpenCode dependencies stay inside infrastructure.
+- [x] 3.2 Run `npm test` and `npm run build`, verifying OpenCode dependencies stay inside infrastructure.
 
 ## Refactor conventions for implementation
 
