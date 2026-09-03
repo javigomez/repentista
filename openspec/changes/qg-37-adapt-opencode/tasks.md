@@ -1,8 +1,8 @@
 ## 1. Verify documentation and specify contracts
 
-- [ ] 1.1 Recheck current OpenCode server/OpenAPI/TypeScript SDK documentation and pin a compatible version, verifying session and prompt APIs before coding.
-- [ ] 1.2 Add failing shared-port contract tests with a fake OpenCode client for session creation, prompt completion, JSON extraction and provenance.
-- [ ] 1.3 Add failing tests for server unavailable, timeout, cancellation, malformed JSON, model error and cross-session contamination.
+- [x] 1.1 Recheck current OpenCode server/OpenAPI/TypeScript SDK documentation and pin a compatible version, verifying session and prompt APIs before coding.
+- [x] 1.2 Add failing shared-port contract tests with a fake OpenCode client for session creation, prompt completion, JSON extraction and provenance.
+- [x] 1.3 Add failing tests for server unavailable, timeout, cancellation, malformed JSON, model error and cross-session contamination.
 
 ## 2. Implement the adapter
 
