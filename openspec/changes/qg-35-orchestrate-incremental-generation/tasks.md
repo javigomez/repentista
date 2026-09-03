@@ -8,7 +8,7 @@
 
 - [x] 2.1 Implement discriminated state/branch types and transition policy, verifying TypeScript exhaustiveness prevents unhandled states.
 - [x] 2.2 Implement `GenerateQuatrains` with injected planners, writer, validators, evaluators, repairers, scorer and ranker, verifying the LLM is never asked for a full quatrain.
-- [ ] 2.3 Implement audit events, rejected-branch summary and pipeline metrics, verifying finalists and failures are kept in separate result fields.
+- [x] 2.3 Implement audit events, rejected-branch summary and pipeline metrics, verifying finalists and failures are kept in separate result fields.
 
 ## 3. Integration and verification
 
