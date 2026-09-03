@@ -1,5 +1,4 @@
 /** Public entrypoint for application use cases. */
-export type ApplicationHandler = () => void;
 export * from "./semantic-outline-planner/index.js";
 export type { ApplicationHandler } from "./application-handler.js";
 export * from "./batch-duplicate-detection/index.js";
