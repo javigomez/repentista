@@ -1199,6 +1199,8 @@ const freezeBrief = (brief: GenerationBrief): GenerationBrief =>
     scheme: brief.scheme,
     rhyme: brief.rhyme,
     metricPositions: brief.metricPositions,
+    verseRetryBudget: brief.verseRetryBudget,
+    llmCallBudget: brief.llmCallBudget,
   });
 
 const createCandidate = (candidate: QuatrainCandidate): QuatrainCandidate =>
