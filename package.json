@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "repentista": "dist/infrastructure/cli/entrypoint.js"
+  },
   "scripts": {
     "openspec:cli": "env OPENSPEC_TELEMETRY=0 DO_NOT_TRACK=1 openspec",
     "openspec:validate-proposal": "node .openspec-shipper/scripts/validate-openspec-proposal.mjs",
@@ -14,6 +17,7 @@
     "start": "node dist/infrastructure/cli/entrypoint.js"
   },
   "dependencies": {
+    "openai": "7.1.0",
     "silabacion": "0.5.2"
   },
   "devDependencies": {
