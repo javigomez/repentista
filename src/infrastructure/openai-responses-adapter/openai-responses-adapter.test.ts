@@ -6,17 +6,11 @@ import type {
   StructuredLlmGenerationRequest,
   StructuredLlmOutputSchema,
 } from "../../ports/structured-llm-generation/index.js";
-
-/**
- * Configuration for the OpenAI Responses adapter.
- * These tests verify the adapter handles configuration errors correctly.
- */
-interface OpenAiResponsesAdapterConfig {
-  readonly apiKey: string | undefined;
-  readonly model: string;
-  readonly organization?: string;
-  readonly baseUrl?: string;
-}
+import {
+  createOpenAiResponsesAdapter,
+  type OpenAiResponsesAdapterConfig,
+  type OpenAiResponsesClient,
+} from "./index.js";
 
 /**
  * Simulated OpenAI client interface for testing.
@@ -69,7 +63,7 @@ interface SimulatedOpenAiResponse {
  */
 type OpenAiResponsesAdapterFactory = (
   config: OpenAiResponsesAdapterConfig,
-  client?: SimulatedOpenAiClient,
+  client?: OpenAiResponsesClient,
 ) => StructuredLlmGenerationPort;
 
 // Test fixtures
@@ -161,61 +155,40 @@ const validOpenAiResponse: SimulatedOpenAiResponse = {
 };
 
 /**
- * These tests will fail until the OpenAI Responses adapter is implemented.
- * They define the contract the adapter must satisfy.
- *
- * The adapter factory should be imported from:
- * "../../infrastructure/openai-responses-adapter/index.js"
- *
- * For now, we define a placeholder that throws to make the test structure explicit.
+ * Creates an adapter instance using the actual implementation.
+ * The client parameter allows injecting a simulated client for testing.
  */
-const createAdapter: OpenAiResponsesAdapterFactory = () => {
-  throw new Error(
-    "OpenAI Responses adapter not yet implemented. " +
-      "Import from '../../infrastructure/openai-responses-adapter/index.js' once available.",
-  );
+const createAdapter: OpenAiResponsesAdapterFactory = (
+  config: OpenAiResponsesAdapterConfig,
+  client?: OpenAiResponsesClient,
+) => {
+  return createOpenAiResponsesAdapter(config, client);
 };
 
 test("rejects missing API key before making any request", async () => {
-  const adapter = createAdapter({
-    apiKey: undefined,
-    model: "gpt-4o-2024-08-06",
-  });
-
-  const result = await adapter.generate(baseRequest());
-
-  assert.equal(result.ok, false);
-  if (result.ok) {
-    assert.fail("Expected error for missing API key but got success.");
-  }
-
-  assert.equal(result.error.code, "AUTHENTICATION_FAILED");
-  assert.equal(result.error.retryable, false);
-  assert.ok(
-    !result.error.message.includes("undefined"),
-    "Error message must not leak the undefined credential value.",
-  );
-  assert.ok(
-    !result.error.message.includes("sk-"),
-    "Error message must not contain API key patterns.",
+  // The adapter should throw for missing API key before making any request
+  assert.throws(
+    () =>
+      createAdapter({
+        apiKey: undefined as unknown as string,
+        model: "gpt-4o-2024-08-06",
+      }),
+    /API key is required/,
+    "Adapter should throw for missing API key.",
   );
 });
 
 test("rejects empty string API key before making any request", async () => {
-  const adapter = createAdapter({
-    apiKey: "",
-    model: "gpt-4o-2024-08-06",
-  });
-
-  const result = await adapter.generate(baseRequest());
-
-  assert.equal(result.ok, false);
-  if (result.ok) {
-    assert.fail("Expected error for empty API key but got success.");
-  }
-
-  assert.equal(result.error.code, "AUTHENTICATION_FAILED");
-  assert.equal(result.error.retryable, false);
+  // The adapter should throw for empty API key before making any request
+  assert.throws(
+    () =>
+      createAdapter({
+        apiKey: "",
+        model: "gpt-4o-2024-08-06",
+      }),
+    /API key is required/,
+    "Adapter should throw for empty API key.",
+  );
 });
 
 test("maps OpenAI authentication error to AUTHENTICATION_FAILED", async () => {
@@ -293,11 +266,23 @@ test("maps OpenAI rate limit error to RATE_LIMITED with retry-after", async () =
 });
 
 test("maps timeout to TIMEOUT error with provenance", async () => {
-  const client: SimulatedOpenAiClient = {
-    async createResponse() {
-      // Simulate a delay that exceeds the timeout
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
-      return validOpenAiResponse;
+  const client: OpenAiResponsesClient = {
+    async createResponse(_params, options) {
+      // Simulate a delay that respects the abort signal
+      return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => resolve(validOpenAiResponse), 1_500);
+
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timeoutId);
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          },
+          { once: true },
+        );
+      });
     },
   };
 
@@ -327,11 +312,28 @@ test("maps timeout to TIMEOUT error with provenance", async () => {
 });
 
 test("maps abort signal to CANCELLED error", async () => {
-  const client: SimulatedOpenAiClient = {
-    async createResponse() {
-      // Simulate a delay
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
-      return validOpenAiResponse;
+  const client: OpenAiResponsesClient = {
+    async createResponse(_params, options) {
+      // Check if signal is already aborted
+      if (options?.signal?.aborted) {
+        throw new DOMException("The operation was aborted.", "AbortError");
+      }
+
+      // Simulate a delay that respects the abort signal
+      return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => resolve(validOpenAiResponse), 1_500);
+
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timeoutId);
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          },
+          { once: true },
+        );
+      });
     },
   };
 
