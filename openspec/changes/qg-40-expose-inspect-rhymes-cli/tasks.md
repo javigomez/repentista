@@ -11,7 +11,7 @@
 ## 3. Wire and verify
 
 - [x] 3.1 Register `inspect-rhymes` in the shared entrypoint, verifying its help and invocation contract are stable.
-- [ ] 3.2 Run `npm test` and `npm run build`, verifying all rhyme-inspection acceptance tests pass offline.
+- [x] 3.2 Run `npm test` and `npm run build`, verifying all rhyme-inspection acceptance tests pass offline.
 
 ## Refactor conventions for implementation
 
