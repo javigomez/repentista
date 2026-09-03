@@ -10,7 +10,7 @@
 
 ## 3. Verify
 
-- [ ] 3.1 Run `npm test` and `npm run build`, verifying all structural fixtures pass.
+- [x] 3.1 Run `npm test` and `npm run build`, verifying all structural fixtures pass.
 
 ## Refactor conventions for implementation
 
