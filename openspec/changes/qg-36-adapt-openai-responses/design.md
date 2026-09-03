@@ -2,6 +2,17 @@
 
 La documentación oficial de OpenAI describe `POST /responses`, entradas textuales, estados de respuesta y salidas JSON mediante Structured Outputs. Referencias de implementación: https://developers.openai.com/api/reference/resources/responses/methods/create y https://developers.openai.com/api/docs/guides/structured-outputs.
 
+Verificación realizada el 2 de septiembre de 2026 contra la referencia oficial
+de Responses y la referencia TypeScript: `responses.create` admite `model`,
+`input`, `instructions`, `max_output_tokens` y `text.format` con un formato
+`json_schema` (`name`, `schema` y configuración estricta). La respuesta expone
+`id`, `model`, `status`, `incomplete_details`, `output_text` y `usage` con
+`input_tokens`, `output_tokens` y `total_tokens`. El adaptador usará esos
+campos y pasará la señal de abortado mediante las opciones de la llamada del
+SDK. Se ha elegido `openai@7.1.0`, versión declarada por el repositorio oficial
+del SDK al verificar la documentación; la dependencia se fijará exactamente en
+el manifiesto durante la tarea 2.1.
+
 ## Goals / Non-Goals
 
 **Goals:** adapter delgado, schema-first, abortable y trazable.
