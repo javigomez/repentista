@@ -1,7 +1,7 @@
 ## 1. Specify CLI behavior first
 
-- [ ] 1.1 Add failing acceptance tests for known words, family output, category/role filters and stable candidate ordering.
-- [ ] 1.2 Add failing tests for empty family, unknown word, unavailable version, doubtful analysis and no-provider execution.
+- [x] 1.1 Add failing acceptance tests for known words, family output, category/role filters and stable candidate ordering.
+- [x] 1.2 Add failing tests for empty family, unknown word, unavailable version, doubtful analysis and no-provider execution.
 
 ## 2. Implement the query adapter
 
