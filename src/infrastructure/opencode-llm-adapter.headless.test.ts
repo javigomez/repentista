@@ -53,7 +53,7 @@ testFn(
   async () => {
     // This test requires a running OpenCode server
     // Set OPENCODE_SERVER_URL=http://127.0.0.1:4096 to enable
-    const { OpenCodeClient } = await import("@opencode-ai/client");
+    const { OpenCodeClient } = await import("@opencode-ai/client" as string);
 
     const client = new OpenCodeClient({ baseURL: serverUrl });
     const generator = new OpenCodeStructuredLlmGenerator({
@@ -76,7 +76,7 @@ testFn(
 );
 
 testFn("headless server: handles timeout correctly", async () => {
-  const { OpenCodeClient } = await import("@opencode-ai/client");
+  const { OpenCodeClient } = await import("@opencode-ai/client" as string);
 
   const client = new OpenCodeClient({ baseURL: serverUrl });
   const generator = new OpenCodeStructuredLlmGenerator({
