@@ -7,11 +7,11 @@
 ## 2. Implement the adapter
 
 - [x] 2.1 Implement client/server configuration and per-branch session isolation, verifying no TUI output scraping is used.
-- [ ] 2.2 Implement prompt submission, local schema validation and normalized error mapping, verifying the same port tests as OpenAI pass.
+- [x] 2.2 Implement prompt submission, local schema validation and normalized error mapping, verifying the same port tests as OpenAI pass.
 
 ## 3. Verify
 
-- [ ] 3.1 Add an opt-in headless-server contract test with controlled configuration, verifying default tests remain offline.
+- [x] 3.1 Add an opt-in headless-server contract test with controlled configuration, verifying default tests remain offline.
 - [ ] 3.2 Run `npm test` and `npm run build`, verifying OpenCode dependencies stay inside infrastructure.
 
 ## Refactor conventions for implementation
