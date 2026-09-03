@@ -6,7 +6,7 @@
 
 ## 2. Implement the adapter
 
-- [ ] 2.1 Implement client/server configuration and per-branch session isolation, verifying no TUI output scraping is used.
+- [x] 2.1 Implement client/server configuration and per-branch session isolation, verifying no TUI output scraping is used.
 - [ ] 2.2 Implement prompt submission, local schema validation and normalized error mapping, verifying the same port tests as OpenAI pass.
 
 ## 3. Verify

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type {
   StructuredLlmGenerationRequest,
   StructuredLlmOutputSchema,
-} from "../../ports/structured-llm-generation/index.js";
+} from "../ports/structured-llm-generation/index.js";
 import { OpenCodeStructuredLlmGenerator } from "./opencode-llm-adapter.js";
 
 interface FakeOpenCodeClient {
@@ -78,10 +78,9 @@ test("creates a session, submits the prompt and returns normalized provenance", 
   });
   const result = await generator.generate(request());
 
-  assert.equal(result.ok, true);
   assert.deepEqual(calls, ["create", "prompt:ses_branch_a:Devuelve JSON."]);
   if (!result.ok) throw new Error(`Expected success, got ${result.error.code}`);
-  assert.equal(result.value.data.finalConcept, "humo");
+  assert.equal((result.value.data as Outline).finalConcept, "humo");
   assert.equal(result.value.provenance.provider, "opencode");
   assert.equal(result.value.provenance.model, "provider/model");
   assert.equal(result.value.provenance.requestId, "msg_1");
