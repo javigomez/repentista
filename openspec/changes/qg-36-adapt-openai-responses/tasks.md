@@ -1,7 +1,7 @@
 ## 1. Verify documentation and specify contracts
 
-- [ ] 1.1 Recheck the official Responses and Structured Outputs documentation and chosen SDK version, verifying request/response fields used by the adapter are current.
-- [ ] 1.2 Add failing shared-port contract tests using a simulated OpenAI client for valid JSON schema output, incomplete response and invalid local schema.
+- [x] 1.1 Recheck the official Responses and Structured Outputs documentation and chosen SDK version, verifying request/response fields used by the adapter are current.
+- [x] 1.2 Add failing shared-port contract tests using a simulated OpenAI client for valid JSON schema output, incomplete response and invalid local schema.
 - [ ] 1.3 Add failing tests for missing credentials, timeout, cancellation, authentication, rate limit, refusal and secret-safe diagnostics.
 
 ## 2. Implement the adapter
