@@ -7,7 +7,7 @@
 ## 2. Implement the adapter
 
 - [x] 2.1 Add the pinned official SDK in infrastructure and translate port requests to Responses, verifying no SDK type crosses the adapter boundary.
-- [ ] 2.2 Implement structured-output extraction, local validation, usage/provenance and error mapping, verifying all simulated contracts pass.
+- [x] 2.2 Implement structured-output extraction, local validation, usage/provenance and error mapping, verifying all simulated contracts pass.
 
 ## 3. Verify
 
