@@ -10,6 +10,10 @@ import {
   validateCandidate,
   type ValidateCandidateRequest,
 } from "../../application/validate-candidate/index.js";
+import { runInspectRhymesCommand } from "./commands/inspect-rhymes.js";
+import { createWeiweiSilabacionWordAnalyzer } from "../weiwei-silabacion/word-analysis-adapter.js";
+import { createVersionedDictionaryJsonLoader } from "../content/versioned-dictionary-json.js";
+import { join } from "node:path";
 
 export interface GenerateArgs {
   readonly provider: "openai" | "opencode";
@@ -212,12 +216,73 @@ function handleValidateCandidate(
   }
 }
 
-export function main(): void {
+const INSPECT_RHYMES_USAGE = `Usage: repentista inspect-rhymes [options]
+
+Options:
+  --word, -w <word>                    Word to inspect (required)
+  --dictionary-version, -d <version>   Dictionary version (required)
+  --category, -c <category>            Filter by category
+  --role, -r <role>                    Filter by role (PREPARATION, PUNCHLINE)
+`;
+
+async function inspectRhymesCommand(argv: readonly string[]): Promise<number> {
+  const dictionaryPath = join(
+    process.cwd(),
+    "data",
+    "dictionary-manifest.json",
+  );
+
+  const loader = createVersionedDictionaryJsonLoader({
+    readText: (logicalPath) => readFile(logicalPath, "utf-8"),
+  });
+
+  const wordArg = argv.find(
+    (_, i, arr) => arr[i - 1] === "--word" || arr[i - 1] === "-w",
+  );
+  const versionArg = argv.find(
+    (_, i, arr) =>
+      arr[i - 1] === "--dictionary-version" || arr[i - 1] === "-d",
+  );
+
+  if (versionArg === undefined) {
+    process.stderr.write("Error: --dictionary-version is required.\n");
+    process.stderr.write(INSPECT_RHYMES_USAGE);
+    return 4;
+  }
+
+  const loadResult = await loader.load({
+    manifestPath: dictionaryPath,
+    version: versionArg,
+  });
+
+  if (!loadResult.ok) {
+    process.stderr.write(
+      `Error: Could not load dictionary: ${loadResult.error.code}\n`,
+    );
+    return 2;
+  }
+
+  const analyzer = createWeiweiSilabacionWordAnalyzer();
+  const result = runInspectRhymesCommand(
+    { dictionary: loadResult.snapshot.dictionary, analyzer },
+    argv,
+  );
+
+  process.stdout.write(result.output + "\n");
+  return result.exitCode;
+}
+
+export async function main(): Promise<void> {
   const { command, inputSource, dictionaryVersion } = parseArgs(process.argv);
 
   if (command === "validate-candidate") {
     handleValidateCandidate(inputSource, dictionaryVersion);
     return;
+  }
+
+  if (command === "inspect-rhymes") {
+    const exitCode = await inspectRhymesCommand(process.argv.slice(3));
+    process.exit(exitCode);
   }
 
   runCli(() => undefined);
