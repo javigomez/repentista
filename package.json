@@ -14,6 +14,7 @@
     "start": "node dist/infrastructure/cli/entrypoint.js"
   },
   "dependencies": {
+    "openai": "7.1.0",
     "silabacion": "0.5.2"
   },
   "devDependencies": {
