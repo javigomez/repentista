@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { ApplicationHandler } from "../../application/application-handler.js";
 import { readFile } from "node:fs/promises";
 import {
@@ -5,6 +6,10 @@ import {
   type GenerationBrief,
   type GenerationBriefInput,
 } from "../../domain/generation-brief/index.js";
+import {
+  validateCandidate,
+  type ValidateCandidateRequest,
+} from "../../application/validate-candidate/index.js";
 
 export interface GenerateArgs {
   readonly provider: "openai" | "opencode";
@@ -120,7 +125,101 @@ export function runCli(application: ApplicationHandler): void {
   application();
 }
 
+interface ParsedArgs {
+  readonly command: string | undefined;
+  readonly inputSource: string | undefined;
+  readonly dictionaryVersion: string | undefined;
+}
+
+function parseArgs(argv: readonly string[]): ParsedArgs {
+  const args = argv.slice(2);
+  let command: string | undefined;
+  let inputSource: string | undefined;
+  let dictionaryVersion: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--dictionary" && i + 1 < args.length) {
+      dictionaryVersion = args[++i];
+    } else if (command === undefined) {
+      command = arg;
+    } else if (inputSource === undefined) {
+      inputSource = arg;
+    }
+  }
+
+  return { command, inputSource, dictionaryVersion };
+}
+
+function readInput(inputSource: string | undefined): string {
+  if (inputSource === undefined || inputSource === "-") {
+    return readFileSync(0, "utf8");
+  }
+
+  return readFileSync(inputSource, "utf8");
+}
+
+function handleValidateCandidate(
+  inputSource: string | undefined,
+  dictionaryVersion: string | undefined,
+): void {
+  let rawInput: string;
+
+  try {
+    rawInput = readInput(inputSource);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(
+      JSON.stringify({ code: "INVALID_CONTRACT", message }) + "\n",
+    );
+    process.exit(1);
+    return;
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(rawInput);
+  } catch {
+    process.stderr.write(
+      JSON.stringify({
+        code: "INVALID_CONTRACT",
+        message: "La entrada no es un JSON válido.",
+      }) + "\n",
+    );
+    process.exit(1);
+    return;
+  }
+
+  const request: ValidateCandidateRequest = {
+    input: parsed,
+    dictionaryVersion: dictionaryVersion ?? "dict-0.1.0",
+  };
+
+  const result = validateCandidate(request);
+
+  if (!result.ok) {
+    process.stderr.write(JSON.stringify(result.error) + "\n");
+    process.exit(1);
+    return;
+  }
+
+  process.stdout.write(JSON.stringify(result.report) + "\n");
+
+  if (result.report.verdict !== "VALIDO") {
+    process.exit(1);
+  }
+}
+
 export function main(): void {
+  const { command, inputSource, dictionaryVersion } = parseArgs(process.argv);
+
+  if (command === "validate-candidate") {
+    handleValidateCandidate(inputSource, dictionaryVersion);
+    return;
+  }
+
   runCli(() => undefined);
 }
 
