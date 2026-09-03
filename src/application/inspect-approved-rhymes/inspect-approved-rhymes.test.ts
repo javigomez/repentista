@@ -23,102 +23,154 @@ const analyzer: WordAnalysisPort = {
   }),
 };
 
-const request = (overrides: Partial<InspectApprovedRhymesRequest> = {}): InspectApprovedRhymesRequest => ({
+const request = (
+  overrides: Partial<InspectApprovedRhymesRequest> = {},
+): InspectApprovedRhymesRequest => ({
   word: "dragón",
   dictionaryVersion: INSPECT_RHYMES_DICTIONARY_VERSION,
   ...overrides,
 });
 
 test.describe("inspect-approved-rhymes", () => {
-  test.it("returns the approved family with analysis and stable editorial ordering", () => {
-    const result = createInspectApprovedRhymes({
-      dictionary: createInspectRhymesDictionary(),
-      analyzer,
-    }).inspect(request());
+  test.it(
+    "returns the approved family with analysis and stable editorial ordering",
+    () => {
+      const result = createInspectApprovedRhymes({
+        dictionary: createInspectRhymesDictionary(),
+        analyzer,
+      }).inspect(request());
 
-    assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected inspection success, got ${result.error.code}`);
+      if (!result.ok)
+        throw new Error(
+          `Expected inspection success, got ${result.error.code}`,
+        );
 
-    assert.equal(result.value.word.form, "dragón");
-    assert.equal(result.value.word.analysis.stressKind, "aguda");
-    assert.equal(result.value.family.key, "on");
-    assert.deepEqual(
-      result.value.candidates.map((candidate) => candidate.form),
-      ["balcón", "canción", "marrón"],
-    );
-    assert.equal(result.value.candidates[0]?.category, "sustantivo");
-    assert.equal(result.value.candidates[0]?.roles.preparation, true);
-  });
+      assert.equal(result.value.word.form, "dragón");
+      assert.equal(result.value.word.analysis.stressKind, "aguda");
+      assert.equal(result.value.family.key, "on");
+      assert.deepEqual(
+        result.value.candidates.map((candidate) => candidate.form),
+        ["balcón", "canción", "marrón"],
+      );
+      assert.equal(result.value.candidates[0]?.category, "sustantivo");
+      assert.equal(result.value.candidates[0]?.roles.preparation, true);
+    },
+  );
 
-  test.it("applies category and role filters while explaining excluded candidates", () => {
-    const result = createInspectApprovedRhymes({
-      dictionary: createInspectRhymesDictionary(),
-      analyzer,
-    }).inspect(request({ category: "sustantivo", role: "PREPARATION" }));
+  test.it(
+    "applies category and role filters while explaining excluded candidates",
+    () => {
+      const result = createInspectApprovedRhymes({
+        dictionary: createInspectRhymesDictionary(),
+        analyzer,
+      }).inspect(request({ category: "sustantivo", role: "PREPARATION" }));
 
-    assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected inspection success, got ${result.error.code}`);
+      if (!result.ok)
+        throw new Error(
+          `Expected inspection success, got ${result.error.code}`,
+        );
 
-    assert.deepEqual(result.value.candidates.map((candidate) => candidate.form), ["balcón"]);
-    assert.deepEqual(
-      result.value.exclusions.map((exclusion) => [exclusion.form, exclusion.reason.code]),
-      [["canción", "ROLE_NOT_ALLOWED"], ["marrón", "CATEGORY_MISMATCH"]],
-    );
-  });
+      assert.deepEqual(
+        result.value.candidates.map((candidate) => candidate.form),
+        ["balcón"],
+      );
+      assert.deepEqual(
+        result.value.exclusions.map((exclusion) => [
+          exclusion.form,
+          exclusion.reason.code,
+        ]),
+        [
+          ["canción", "ROLE_NOT_ALLOWED"],
+          ["marrón", "CATEGORY_MISMATCH"],
+        ],
+      );
+    },
+  );
 
-  test.it("returns empty candidates and explained exclusions when the family has no surviving pairs", () => {
-    const result = createInspectApprovedRhymes({
-      dictionary: createInspectRhymesDictionary(),
-      analyzer,
-    }).inspect(request({ category: "verbo" }));
+  test.it(
+    "returns empty candidates and explained exclusions when the family has no surviving pairs",
+    () => {
+      const result = createInspectApprovedRhymes({
+        dictionary: createInspectRhymesDictionary(),
+        analyzer,
+      }).inspect(request({ category: "verbo" }));
 
-    assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected inspection success, got ${result.error.code}`);
+      if (!result.ok)
+        throw new Error(
+          `Expected inspection success, got ${result.error.code}`,
+        );
 
-    assert.deepEqual(result.value.candidates, []);
-    assert.ok(result.value.exclusions.length > 0, "Expected exclusions to explain why no candidates survived");
-    for (const exclusion of result.value.exclusions) {
-      assert.ok(exclusion.form.length > 0, "Excluded candidate form must be present");
-      assert.ok(exclusion.reason.code.length > 0, "Exclusion reason code must be present");
-      assert.ok(exclusion.reason.message.length > 0, "Exclusion reason message must be present");
-    }
-  });
+      assert.deepEqual(result.value.candidates, []);
+      assert.ok(
+        result.value.exclusions.length > 0,
+        "Expected exclusions to explain why no candidates survived",
+      );
+      for (const exclusion of result.value.exclusions) {
+        assert.ok(
+          exclusion.form.length > 0,
+          "Excluded candidate form must be present",
+        );
+        assert.ok(
+          exclusion.reason.code.length > 0,
+          "Exclusion reason code must be present",
+        );
+        assert.ok(
+          exclusion.reason.message.length > 0,
+          "Exclusion reason message must be present",
+        );
+      }
+    },
+  );
 
-  test.it("rejects an unknown word that does not belong to the requested snapshot", () => {
-    const result = createInspectApprovedRhymes({
-      dictionary: createInspectRhymesDictionary(),
-      analyzer,
-    }).inspect(request({ word: "quimera" }));
+  test.it(
+    "rejects an unknown word that does not belong to the requested snapshot",
+    () => {
+      const result = createInspectApprovedRhymes({
+        dictionary: createInspectRhymesDictionary(),
+        analyzer,
+      }).inspect(request({ word: "quimera" }));
 
-    assert.equal(result.ok, false);
-    if (result.ok) throw new Error(`Expected inspection failure for unknown word, got ok`);
+      if (result.ok)
+        throw new Error("Expected inspection failure for unknown word, got ok");
 
-    assert.equal(result.error.code, "UNKNOWN_WORD");
-    assert.equal(result.error.word, "quimera");
-  });
+      assert.equal(result.error.code, "UNKNOWN_WORD");
+      assert.equal(result.error.word, "quimera");
+    },
+  );
 
-  test.it("rejects a request when the dictionary version is unavailable", () => {
-    const result = createInspectApprovedRhymes({
-      dictionary: createInspectRhymesDictionary(),
-      analyzer,
-    }).inspect(request({ dictionaryVersion: "dictionary-9999-01-01" }));
+  test.it(
+    "rejects a request when the dictionary version is unavailable",
+    () => {
+      const result = createInspectApprovedRhymes({
+        dictionary: createInspectRhymesDictionary(),
+        analyzer,
+      }).inspect(request({ dictionaryVersion: "dictionary-9999-01-01" }));
 
-    assert.equal(result.ok, false);
-    if (result.ok) throw new Error(`Expected inspection failure for unavailable version, got ok`);
+      if (result.ok)
+        throw new Error(
+          "Expected inspection failure for unavailable version, got ok",
+        );
 
-    assert.equal(result.error.code, "DICTIONARY_VERSION_UNAVAILABLE");
-    if (result.error.code === "DICTIONARY_VERSION_UNAVAILABLE") {
-      assert.equal(result.error.version, "dictionary-9999-01-01");
-      assert.ok(result.error.availableVersions.length > 0, "Should list available versions");
-    }
-  });
+      assert.equal(result.error.code, "DICTIONARY_VERSION_UNAVAILABLE");
+      if (result.error.code === "DICTIONARY_VERSION_UNAVAILABLE") {
+        assert.equal(result.error.version, "dictionary-9999-01-01");
+        assert.ok(
+          result.error.availableVersions.length > 0,
+          "Should list available versions",
+        );
+      }
+    },
+  );
 
   test.it("rejects a word whose analysis is doubtful or fails", () => {
     const doubtfulAnalyzer: WordAnalysisPort = {
       analyze: (form) => ({
         ok: false,
         form,
-        error: { code: "UNSUPPORTED_STRESS_KIND", message: "Cannot determine stress." },
+        error: {
+          code: "UNSUPPORTED_STRESS_KIND",
+          message: "Cannot determine stress.",
+        },
         versions: { adapter: "test-analyzer/1", library: "test" },
       }),
     };
@@ -128,13 +180,18 @@ test.describe("inspect-approved-rhymes", () => {
       analyzer: doubtfulAnalyzer,
     }).inspect(request());
 
-    assert.equal(result.ok, false);
-    if (result.ok) throw new Error(`Expected inspection failure for doubtful analysis, got ok`);
+    if (result.ok)
+      throw new Error(
+        "Expected inspection failure for doubtful analysis, got ok",
+      );
 
     assert.equal(result.error.code, "DOUBTFUL_ANALYSIS");
     if (result.error.code === "DOUBTFUL_ANALYSIS") {
       assert.equal(result.error.word, "dragón");
-      assert.ok(result.error.analysisError.length > 0, "Analysis error message must be present");
+      assert.ok(
+        result.error.analysisError.length > 0,
+        "Analysis error message must be present",
+      );
     }
   });
 
@@ -144,11 +201,17 @@ test.describe("inspect-approved-rhymes", () => {
       analyzer,
     }).inspect(request());
 
-    assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected inspection success, got ${result.error.code}`);
+    if (!result.ok)
+      throw new Error(`Expected inspection success, got ${result.error.code}`);
 
     assert.equal(result.value.word.form, "dragón");
-    assert.ok(result.value.family.key.length > 0, "Family key must be computed from linguistic analysis");
-    assert.ok(result.value.candidates.length > 0, "Must return candidates from dictionary alone");
+    assert.ok(
+      result.value.family.key.length > 0,
+      "Family key must be computed from linguistic analysis",
+    );
+    assert.ok(
+      result.value.candidates.length > 0,
+      "Must return candidates from dictionary alone",
+    );
   });
 });

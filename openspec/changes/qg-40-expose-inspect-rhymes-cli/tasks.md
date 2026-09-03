@@ -5,7 +5,7 @@
 
 ## 2. Implement the query adapter
 
-- [ ] 2.1 Implement the inspect-rhymes query use case over dictionary, word analysis and catalog, verifying candidates and exclusions are both returned.
+- [x] 2.1 Implement the inspect-rhymes query use case over dictionary, word analysis and catalog, verifying candidates and exclusions are both returned.
 - [ ] 2.2 Implement CLI parsing, JSON rendering and exit mapping, verifying no generation or LLM dependency is reachable.
 
 ## 3. Wire and verify
