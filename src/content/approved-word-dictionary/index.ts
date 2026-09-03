@@ -70,8 +70,29 @@ export type ApprovedWordLookupResult =
       };
     };
 
+export interface ApprovedWordVersionRequest {
+  readonly version: string;
+}
+
+export type ApprovedWordVersionResult =
+  | {
+      readonly ok: true;
+      readonly entries: readonly ApprovedWord[];
+    }
+  | {
+      readonly ok: false;
+      readonly error: {
+        readonly code: "DICTIONARY_VERSION_UNAVAILABLE";
+        readonly version: string;
+        readonly availableVersions: readonly string[];
+      };
+    };
+
 export interface ApprovedWordDictionary {
   findByForm(request: ApprovedWordLookupRequest): ApprovedWordLookupResult;
+  findAllByVersion(
+    request: ApprovedWordVersionRequest,
+  ): ApprovedWordVersionResult;
 }
 
 export class ApprovedWordDictionaryCreationError extends Error {
@@ -84,7 +105,8 @@ export class ApprovedWordDictionaryCreationError extends Error {
   }
 }
 
-const collapseWhitespace = (value: string): string => value.trim().replace(/\s+/gu, " ");
+const collapseWhitespace = (value: string): string =>
+  value.trim().replace(/\s+/gu, " ");
 
 const normalizeVisibleText = (value: string): string =>
   collapseWhitespace(value).toLocaleLowerCase("es");
@@ -104,14 +126,20 @@ export const normalizeApprovedWordForm = (value: string): string =>
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && collapseWhitespace(value).length > 0;
 
-const fieldError = (field: string, code: string, message: string): ApprovedWordFieldError =>
-  Object.freeze({ field, code, message });
+const fieldError = (
+  field: string,
+  code: string,
+  message: string,
+): ApprovedWordFieldError => Object.freeze({ field, code, message });
 
 const freezeErrors = (
   errors: readonly ApprovedWordFieldError[],
-): readonly ApprovedWordFieldError[] => Object.freeze(errors.map((error) => Object.freeze(error)));
+): readonly ApprovedWordFieldError[] =>
+  Object.freeze(errors.map((error) => Object.freeze(error)));
 
-const fail = (errors: readonly ApprovedWordFieldError[]): ApprovedWordCreationResult =>
+const fail = (
+  errors: readonly ApprovedWordFieldError[],
+): ApprovedWordCreationResult =>
   Object.freeze({ ok: false as const, errors: freezeErrors(errors) });
 
 const hasSupportedValue = <T extends string>(
@@ -138,22 +166,38 @@ const validateBoolean = (
   errors: ApprovedWordFieldError[],
 ): boolean => {
   if (typeof input !== "boolean") {
-    errors.push(fieldError(field, "INVALID_BOOLEAN", `${field} debe ser booleano.`));
+    errors.push(
+      fieldError(field, "INVALID_BOOLEAN", `${field} debe ser booleano.`),
+    );
     return false;
   }
 
   return input;
 };
 
-export function createApprovedWord(input: ApprovedWordInput): ApprovedWordCreationResult {
+export function createApprovedWord(
+  input: ApprovedWordInput,
+): ApprovedWordCreationResult {
   const errors: ApprovedWordFieldError[] = [];
   const version = validateRequiredText(input.version, "version", errors);
-  const form = normalizeVisibleText(validateRequiredText(input.form, "form", errors));
-  const lemma = normalizeVisibleText(validateRequiredText(input.lemma, "lemma", errors));
-  const category = normalizeVisibleText(validateRequiredText(input.category, "category", errors));
-  const level = normalizeVisibleText(validateRequiredText(input.level, "level", errors));
-  const tonicity = normalizeVisibleText(validateRequiredText(input.tonicity, "tonicity", errors));
-  const status = normalizeVisibleText(validateRequiredText(input.status, "status", errors));
+  const form = normalizeVisibleText(
+    validateRequiredText(input.form, "form", errors),
+  );
+  const lemma = normalizeVisibleText(
+    validateRequiredText(input.lemma, "lemma", errors),
+  );
+  const category = normalizeVisibleText(
+    validateRequiredText(input.category, "category", errors),
+  );
+  const level = normalizeVisibleText(
+    validateRequiredText(input.level, "level", errors),
+  );
+  const tonicity = normalizeVisibleText(
+    validateRequiredText(input.tonicity, "tonicity", errors),
+  );
+  const status = normalizeVisibleText(
+    validateRequiredText(input.status, "status", errors),
+  );
   const allowedAsPreparation = validateBoolean(
     input.allowedAsPreparation,
     "allowedAsPreparation",
@@ -165,26 +209,49 @@ export function createApprovedWord(input: ApprovedWordInput): ApprovedWordCreati
     errors,
   );
 
-  if (tonicity.length > 0 && !hasSupportedValue(SUPPORTED_TONICITIES, tonicity)) {
+  if (
+    tonicity.length > 0 &&
+    !hasSupportedValue(SUPPORTED_TONICITIES, tonicity)
+  ) {
     errors.push(
-      fieldError("tonicity", "UNSUPPORTED_TONICITY", "Solo se admite tonicidad aguda o llana."),
+      fieldError(
+        "tonicity",
+        "UNSUPPORTED_TONICITY",
+        "Solo se admite tonicidad aguda o llana.",
+      ),
     );
   }
 
   if (status.length > 0 && !hasSupportedValue(SUPPORTED_STATUSES, status)) {
-    errors.push(fieldError("status", "UNSUPPORTED_STATUS", "Solo se admite estado approved o pending."));
+    errors.push(
+      fieldError(
+        "status",
+        "UNSUPPORTED_STATUS",
+        "Solo se admite estado approved o pending.",
+      ),
+    );
   }
 
   const normalizedForm = normalizeApprovedWordForm(form);
   const normalizedLemma = normalizeApprovedWordForm(lemma);
 
   if (normalizedForm.length === 0 && form.length > 0) {
-    errors.push(fieldError("form", "INVALID_NORMALIZED_FORM", "La forma normalizada no puede estar vacía."));
+    errors.push(
+      fieldError(
+        "form",
+        "INVALID_NORMALIZED_FORM",
+        "La forma normalizada no puede estar vacía.",
+      ),
+    );
   }
 
   if (normalizedLemma.length === 0 && lemma.length > 0) {
     errors.push(
-      fieldError("lemma", "INVALID_NORMALIZED_LEMMA", "El lema normalizado no puede estar vacío."),
+      fieldError(
+        "lemma",
+        "INVALID_NORMALIZED_LEMMA",
+        "El lema normalizado no puede estar vacío.",
+      ),
     );
   }
 
@@ -213,21 +280,31 @@ const prefixErrors = (
   prefix: string,
   errors: readonly ApprovedWordFieldError[],
 ): ApprovedWordFieldError[] =>
-  errors.map((error) => fieldError(`${prefix}.${error.field}`, error.code, error.message));
+  errors.map((error) =>
+    fieldError(`${prefix}.${error.field}`, error.code, error.message),
+  );
 
 export function createInMemoryApprovedWordDictionary(
   input: ApprovedWordDictionaryInput,
 ): ApprovedWordDictionary {
   const errors: ApprovedWordFieldError[] = [];
   const versions = new Map<string, ReadonlyMap<string, ApprovedWord>>();
-  const versionNames = Object.keys(input.versions).map(collapseWhitespace).sort();
+  const versionNames = Object.keys(input.versions)
+    .map(collapseWhitespace)
+    .sort();
 
   for (const [rawVersion, entries] of Object.entries(input.versions)) {
     const version = collapseWhitespace(rawVersion);
     const byNormalizedForm = new Map<string, ApprovedWord>();
 
     if (version.length === 0) {
-      errors.push(fieldError("versions", "REQUIRED_VERSION", "La versión del diccionario es obligatoria."));
+      errors.push(
+        fieldError(
+          "versions",
+          "REQUIRED_VERSION",
+          "La versión del diccionario es obligatoria.",
+        ),
+      );
       continue;
     }
 
@@ -306,6 +383,29 @@ export function createInMemoryApprovedWordDictionary(
         ok: true as const,
         status: entry.status,
         entry,
+      });
+    },
+
+    findAllByVersion(
+      request: ApprovedWordVersionRequest,
+    ): ApprovedWordVersionResult {
+      const version = collapseWhitespace(request.version);
+      const snapshot = versions.get(version);
+
+      if (snapshot === undefined) {
+        return Object.freeze({
+          ok: false as const,
+          error: Object.freeze({
+            code: "DICTIONARY_VERSION_UNAVAILABLE" as const,
+            version,
+            availableVersions,
+          }),
+        });
+      }
+
+      return Object.freeze({
+        ok: true as const,
+        entries: Object.freeze([...snapshot.values()]),
       });
     },
   });
