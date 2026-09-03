@@ -11,7 +11,7 @@
 
 ## 3. Verify
 
-- [ ] 3.1 Add an opt-in live contract test guarded by credentials, verifying it never runs in the default offline suite.
+- [x] 3.1 Add an opt-in live contract test guarded by credentials, verifying it never runs in the default offline suite.
 - [ ] 3.2 Run `npm test` and `npm run build`, verifying the normal suite passes without network or API key.
 
 ## Refactor conventions for implementation
