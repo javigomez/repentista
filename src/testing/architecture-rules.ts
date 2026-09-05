@@ -53,3 +53,20 @@ export function assertLayerDependencies(layer: Layer, imports: readonly string[]
     }
   }
 }
+
+const CATALOG_PATH = "/content/approved-consonant-rhyme-catalog/";
+const CATALOG_OWNER = "src/content/approved-consonant-rhyme-catalog/";
+const FAMILY_DERIVATION = /(?:lastIndexOf\s*\(|slice\s*\([^)]*last|(?:family|rhyme|phonetic)\s*(?:Key|Tail)\s*=)/i;
+const CATALOG_INTERNALS = /(?:asConsonantPhoneticTail|buildApprovedConsonantRhymeCatalog|findFamilyBy(?:Word|Tail))/;
+
+/** Enforces that consonant-family extraction and membership remain owned by the catalog. */
+export function assertConsonantRhymeCatalogBoundary(path: string, source: string): void {
+  const isOwner = path.replaceAll("\\", "/").includes(CATALOG_OWNER);
+  if (!isOwner && FAMILY_DERIVATION.test(source)) {
+    throw new Error(`${path}: forbidden implementation of the approved consonant rhyme catalog boundary`);
+  }
+
+  if (!isOwner && CATALOG_INTERNALS.test(source) && source.includes(CATALOG_PATH)) {
+    throw new Error(`${path}: consumer may not import catalog internals; use the owner boundary API`);
+  }
+}
