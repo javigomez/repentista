@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   createSoftQualityRepairRequest,
+  createSoftQualityRepairPrompt,
   type SoftQualityRepairRequest,
 } from "./index.js";
 
@@ -30,7 +31,7 @@ describe("constrained soft-quality repair request", () => {
     const result = createSoftQualityRepairRequest(baseRequest());
 
     assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected valid request: ${result.error.message}`);
+    if (!result.ok) throw new Error("Expected valid request");
     assert.equal(result.value.dimension, "NATURALIDAD");
     assert.deepEqual(result.value.editableSlots, ["V3"]);
     assert.deepEqual(result.value.immutableSlots, ["V1", "V2", "V4"]);
@@ -118,6 +119,18 @@ describe("constrained soft-quality repair request", () => {
     if (result.ok) throw new Error("Expected attempt exceeding max to fail");
     assert.equal(result.error.code, "ATTEMPT_EXCEEDED");
   });
+
+  it("builds a dimension-specific prompt with explicit edit permissions", () => {
+    const request = createSoftQualityRepairRequest(baseRequest());
+    if (!request.ok) throw new Error("Expected valid request");
+
+    const prompt = createSoftQualityRepairPrompt(request.value);
+
+    assert.equal(prompt.id, "repair-naturalidad");
+    assert.equal(prompt.version, "0.1.0");
+    assert.match(prompt.messages[1]?.content ?? "", /solo V3/i);
+    assert.match(prompt.messages[1]?.content ?? "", /no modificar V1, V2, V4/i);
+  });
 });
 
 describe("constrained soft-quality repair execution", () => {
@@ -142,7 +155,7 @@ describe("constrained soft-quality repair execution", () => {
 
   it("discards a variant that changes an immutable slot", async () => {
     const request = createSoftQualityRepairRequest(baseRequest());
-    if (!request.ok) throw new Error(`Expected valid request: ${request.error.message}`);
+    if (!request.ok) throw new Error("Expected valid request");
 
     // The repair executor should reject variants that modify immutable slots
     // This test will fail until executeConstrainedRepair is implemented
@@ -171,7 +184,7 @@ describe("constrained soft-quality repair execution", () => {
     });
 
     assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected repair to succeed: ${result.error.message}`);
+    if (!result.ok) throw new Error("Expected repair to succeed");
     assert.equal(result.value.outcome, "ORIGINAL_PRESERVED");
     assert.equal(result.value.rejectedVariants.length, 1);
     assert.equal(result.value.rejectedVariants[0].reason, "IMMUTABLE_SLOT_CHANGED");
@@ -180,7 +193,7 @@ describe("constrained soft-quality repair execution", () => {
 
   it("discards a variant that breaks hard validation", async () => {
     const request = createSoftQualityRepairRequest(baseRequest());
-    if (!request.ok) throw new Error(`Expected valid request: ${request.error.message}`);
+    if (!request.ok) throw new Error("Expected valid request");
 
     // The repair executor should reject variants that fail hard validation
     // This test will fail until executeConstrainedRepair is implemented
@@ -212,7 +225,7 @@ describe("constrained soft-quality repair execution", () => {
     });
 
     assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected repair to succeed: ${result.error.message}`);
+    if (!result.ok) throw new Error("Expected repair to succeed");
     assert.equal(result.value.outcome, "ORIGINAL_PRESERVED");
     assert.equal(result.value.rejectedVariants.length, 1);
     assert.equal(result.value.rejectedVariants[0].reason, "HARD_VALIDATION_FAILED");
@@ -220,7 +233,7 @@ describe("constrained soft-quality repair execution", () => {
 
   it("preserves original when no variant improves the diagnosis", async () => {
     const request = createSoftQualityRepairRequest(baseRequest());
-    if (!request.ok) throw new Error(`Expected valid request: ${request.error.message}`);
+    if (!request.ok) throw new Error("Expected valid request");
 
     // The repair executor should preserve original when no improvement is found
     // This test will fail until executeConstrainedRepair is implemented
@@ -259,7 +272,7 @@ describe("constrained soft-quality repair execution", () => {
     });
 
     assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected repair to succeed: ${result.error.message}`);
+    if (!result.ok) throw new Error("Expected repair to succeed");
     assert.equal(result.value.outcome, "ORIGINAL_PRESERVED");
     assert.equal(result.value.attempts.length, 2);
     assert.equal(result.value.attempts[0].improved, false);
@@ -268,7 +281,7 @@ describe("constrained soft-quality repair execution", () => {
 
   it("accepts a variant that improves the target dimension and passes hard validation", async () => {
     const request = createSoftQualityRepairRequest(baseRequest());
-    if (!request.ok) throw new Error(`Expected valid request: ${request.error.message}`);
+    if (!request.ok) throw new Error("Expected valid request");
 
     // The repair executor should accept an improving variant
     // This test will fail until executeConstrainedRepair is implemented
@@ -293,11 +306,16 @@ describe("constrained soft-quality repair execution", () => {
         },
       }],
       hardValidator: async () => ({ ok: true }),
-      dimensionEvaluator: async () => ({ note: 20, confidence: 0.95 }), // improvement
+      dimensionEvaluator: (() => {
+        let calls = 0;
+        return async () => (++calls === 1
+          ? { note: 15, confidence: 0.8 }
+          : { note: 20, confidence: 0.95 });
+      })(), // original, then variant
     });
 
     assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`Expected repair to succeed: ${result.error.message}`);
+    if (!result.ok) throw new Error("Expected repair to succeed");
     assert.equal(result.value.outcome, "VARIANT_ACCEPTED");
     assert.equal(result.value.acceptedVariant?.verses.V3, "el gato se distrae con hambre");
     assert.equal(result.value.acceptedVariant?.dimensionNote, 20);
