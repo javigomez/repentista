@@ -6,6 +6,8 @@ export const GENERATION_BRIEF_DEFAULTS = Object.freeze({
   scheme: "0-A-0-A",
   rhyme: "consonant",
   metricPositions: 7,
+  verseRetryBudget: 3,
+  llmCallBudget: 200,
 } as const);
 
 export type GenerationScheme = typeof GENERATION_BRIEF_DEFAULTS.scheme;
@@ -21,6 +23,8 @@ export interface GenerationBriefInput {
   readonly scheme?: string;
   readonly rhyme?: string;
   readonly metricPositions?: number;
+  readonly verseRetryBudget?: number;
+  readonly llmCallBudget?: number;
 }
 
 export interface GenerationBrief {
@@ -32,6 +36,8 @@ export interface GenerationBrief {
   readonly scheme: GenerationScheme;
   readonly rhyme: RhymeKind;
   readonly metricPositions: MetricPositions;
+  readonly verseRetryBudget: number;
+  readonly llmCallBudget: number;
 }
 
 export interface BriefValidationError {
@@ -44,7 +50,8 @@ export type GenerationBriefResult =
   | { readonly ok: true; readonly value: GenerationBrief }
   | { readonly ok: false; readonly errors: readonly BriefValidationError[] };
 
-const normalizeText = (value: string): string => value.trim().replace(/\s+/gu, " ");
+const normalizeText = (value: string): string =>
+  value.trim().replace(/\s+/gu, " ");
 
 const error = (
   field: keyof GenerationBriefInput,
@@ -52,48 +59,102 @@ const error = (
   message: string,
 ): BriefValidationError => Object.freeze({ field, code, message });
 
-const isIntegerInRange = (value: number, minimum: number, maximum: number): boolean =>
-  Number.isInteger(value) && value >= minimum && value <= maximum;
+const isIntegerInRange = (
+  value: number,
+  minimum: number,
+  maximum: number,
+): boolean => Number.isInteger(value) && value >= minimum && value <= maximum;
 
-export function createGenerationBrief(input: GenerationBriefInput): GenerationBriefResult {
+export function createGenerationBrief(
+  input: GenerationBriefInput,
+): GenerationBriefResult {
   const errors: BriefValidationError[] = [];
   const context = normalizeText(input.context);
-  const tone = input.tone === undefined ? GENERATION_BRIEF_DEFAULTS.tone : normalizeText(input.tone);
-  const candidateCount = input.candidateCount ?? GENERATION_BRIEF_DEFAULTS.candidateCount;
+  const tone =
+    input.tone === undefined
+      ? GENERATION_BRIEF_DEFAULTS.tone
+      : normalizeText(input.tone);
+  const candidateCount =
+    input.candidateCount ?? GENERATION_BRIEF_DEFAULTS.candidateCount;
   const topK = input.topK ?? GENERATION_BRIEF_DEFAULTS.topK;
-  const minimumScore = input.minimumScore ?? GENERATION_BRIEF_DEFAULTS.minimumScore;
+  const minimumScore =
+    input.minimumScore ?? GENERATION_BRIEF_DEFAULTS.minimumScore;
   const scheme = input.scheme ?? GENERATION_BRIEF_DEFAULTS.scheme;
   const rhyme = input.rhyme ?? GENERATION_BRIEF_DEFAULTS.rhyme;
-  const metricPositions = input.metricPositions ?? GENERATION_BRIEF_DEFAULTS.metricPositions;
+  const metricPositions =
+    input.metricPositions ?? GENERATION_BRIEF_DEFAULTS.metricPositions;
 
   if (context.length === 0) {
-    errors.push(error("context", "EMPTY_CONTEXT", "El contexto no puede estar vacío."));
+    errors.push(
+      error("context", "EMPTY_CONTEXT", "El contexto no puede estar vacío."),
+    );
   }
   if (input.tone !== undefined && tone.length === 0) {
     errors.push(error("tone", "EMPTY_TONE", "El tono no puede estar vacío."));
   }
   if (!isIntegerInRange(candidateCount, 1, 1000)) {
-    errors.push(error("candidateCount", "INVALID_RANGE", "candidateCount debe ser un entero entre 1 y 1000."));
+    errors.push(
+      error(
+        "candidateCount",
+        "INVALID_RANGE",
+        "candidateCount debe ser un entero entre 1 y 1000.",
+      ),
+    );
   }
   if (!isIntegerInRange(topK, 1, 1000) || topK > candidateCount) {
-    errors.push(error("topK", "INVALID_RANGE", "topK debe ser positivo y no superar candidateCount."));
+    errors.push(
+      error(
+        "topK",
+        "INVALID_RANGE",
+        "topK debe ser positivo y no superar candidateCount.",
+      ),
+    );
   }
-  if (!Number.isFinite(minimumScore) || minimumScore < 0 || minimumScore > 100) {
-    errors.push(error("minimumScore", "INVALID_RANGE", "minimumScore debe estar entre 0 y 100."));
+  if (
+    !Number.isFinite(minimumScore) ||
+    minimumScore < 0 ||
+    minimumScore > 100
+  ) {
+    errors.push(
+      error(
+        "minimumScore",
+        "INVALID_RANGE",
+        "minimumScore debe estar entre 0 y 100.",
+      ),
+    );
   }
   if (scheme !== GENERATION_BRIEF_DEFAULTS.scheme) {
-    errors.push(error("scheme", "UNSUPPORTED_SCHEME", "Solo se admite el esquema 0-A-0-A."));
+    errors.push(
+      error(
+        "scheme",
+        "UNSUPPORTED_SCHEME",
+        "Solo se admite el esquema 0-A-0-A.",
+      ),
+    );
   }
   if (rhyme !== GENERATION_BRIEF_DEFAULTS.rhyme) {
-    errors.push(error("rhyme", "UNSUPPORTED_RHYME", "Solo se admite la rima consonante."));
+    errors.push(
+      error("rhyme", "UNSUPPORTED_RHYME", "Solo se admite la rima consonante."),
+    );
   }
   if (metricPositions !== GENERATION_BRIEF_DEFAULTS.metricPositions) {
-    errors.push(error("metricPositions", "UNSUPPORTED_METRIC", "Solo se admiten siete posiciones métricas."));
+    errors.push(
+      error(
+        "metricPositions",
+        "UNSUPPORTED_METRIC",
+        "Solo se admiten siete posiciones métricas.",
+      ),
+    );
   }
 
   if (errors.length > 0) {
     return Object.freeze({ ok: false as const, errors: Object.freeze(errors) });
   }
+
+  const verseRetryBudget =
+    input.verseRetryBudget ?? GENERATION_BRIEF_DEFAULTS.verseRetryBudget;
+  const llmCallBudget =
+    input.llmCallBudget ?? GENERATION_BRIEF_DEFAULTS.llmCallBudget;
 
   const value: GenerationBrief = Object.freeze({
     context,
@@ -104,6 +165,8 @@ export function createGenerationBrief(input: GenerationBriefInput): GenerationBr
     scheme: GENERATION_BRIEF_DEFAULTS.scheme,
     rhyme: GENERATION_BRIEF_DEFAULTS.rhyme,
     metricPositions: GENERATION_BRIEF_DEFAULTS.metricPositions,
+    verseRetryBudget,
+    llmCallBudget,
   });
 
   return Object.freeze({ ok: true as const, value });
