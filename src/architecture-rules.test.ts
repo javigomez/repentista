@@ -4,10 +4,63 @@ import { readFile } from "node:fs/promises";
 
 import {
   assertConsonantRhymeCatalogBoundary,
+  assertBoundaryExceptions,
   assertLayerDependencies,
   extractRelativeImports,
   layerForPath,
 } from "./testing/architecture-rules.js";
+
+test("boundary exceptions require an exact file, rationale, and removal condition", () => {
+  assert.doesNotThrow(() =>
+    assertBoundaryExceptions([
+      {
+        path: "src/application/legacy-rhyme-adapter.ts",
+        reason: "kept while QG-41 migration is deployed",
+        removalCondition: "remove after QG-41 merges",
+      },
+    ]),
+  );
+
+  assert.throws(
+    () => assertBoundaryExceptions([
+      { path: "src/application/", reason: "temporary", removalCondition: "later" },
+    ]),
+    /exact file|directory|broad/i,
+  );
+  assert.throws(
+    () => assertBoundaryExceptions([
+      { path: "src/application/legacy-rhyme-adapter.ts", reason: "temporary", removalCondition: "" },
+    ]),
+    /removal condition/i,
+  );
+  assert.throws(
+    () => assertBoundaryExceptions([
+      { path: "src/application/legacy-rhyme-adapter.ts", reason: "", removalCondition: "remove later" },
+    ]),
+    /reason/i,
+  );
+});
+
+test("boundary exceptions are opt-in and do not silently bypass the boundary", () => {
+  assert.throws(
+    () => assertConsonantRhymeCatalogBoundary(
+      "src/application/legacy-rhyme-adapter.ts",
+      "const familyTail = word.slice(word.lastIndexOf('a'));",
+    ),
+    /catalog boundary/i,
+  );
+  assert.doesNotThrow(() =>
+    assertConsonantRhymeCatalogBoundary(
+      "src/application/legacy-rhyme-adapter.ts",
+      "const familyTail = word.slice(word.lastIndexOf('a'));",
+      [{
+        path: "src/application/legacy-rhyme-adapter.ts",
+        reason: "kept while QG-41 migration is deployed",
+        removalCondition: "remove after QG-41 merges",
+      }],
+    ),
+  );
+});
 
 test("rhyme consumers must delegate family decisions to the approved catalog", () => {
   assert.throws(

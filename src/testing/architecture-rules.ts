@@ -59,8 +59,39 @@ const CATALOG_OWNER = "src/content/approved-consonant-rhyme-catalog/";
 const FAMILY_DERIVATION = /(?:lastIndexOf\s*\(|slice\s*\([^)]*last|(?:family|rhyme|phonetic)\s*(?:Key|Tail)\s*=)/i;
 const CATALOG_INTERNALS = /(?:asConsonantPhoneticTail|buildApprovedConsonantRhymeCatalog|findFamilyBy(?:Word|Tail))/;
 
+export interface BoundaryException {
+  readonly path: string;
+  readonly reason: string;
+  readonly removalCondition: string;
+}
+
+/** Validates the deliberately narrow, temporary exception registry. */
+export function assertBoundaryExceptions(exceptions: readonly BoundaryException[]): void {
+  for (const exception of exceptions) {
+    const path = exception.path.replaceAll("\\", "/");
+    if (!path || path.endsWith("/") || /[*?\[\]{}]/.test(path)) {
+      throw new Error(`boundary exception must name an exact file, not a directory or pattern: ${exception.path}`);
+    }
+    if (!exception.reason.trim()) {
+      throw new Error(`boundary exception for ${path} requires a reason`);
+    }
+    if (!exception.removalCondition.trim()) {
+      throw new Error(`boundary exception for ${path} requires a removal condition`);
+    }
+  }
+}
+
 /** Enforces that consonant-family extraction and membership remain owned by the catalog. */
-export function assertConsonantRhymeCatalogBoundary(path: string, source: string): void {
+export function assertConsonantRhymeCatalogBoundary(
+  path: string,
+  source: string,
+  exceptions: readonly BoundaryException[] = [],
+): void {
+  assertBoundaryExceptions(exceptions);
+  const normalizedPath = path.replaceAll("\\", "/");
+  if (exceptions.some((exception) => exception.path.replaceAll("\\", "/") === normalizedPath)) {
+    return;
+  }
   const isOwner = path.replaceAll("\\", "/").includes(CATALOG_OWNER);
   if (!isOwner && FAMILY_DERIVATION.test(source)) {
     throw new Error(`${path}: forbidden implementation of the approved consonant rhyme catalog boundary`);

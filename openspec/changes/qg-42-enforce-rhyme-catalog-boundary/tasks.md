@@ -7,7 +7,7 @@
 
 - [x] 2.1 Extend the shared architecture-rule utilities with an explicit linguistic-owner rule, verifying allowed catalog internals pass and dependency inversions fail.
 - [x] 2.2 Apply the rule to application, CLI and validator consumers, verifying local family derivation and catalog reconstruction are rejected without blocking unrelated text processing.
-- [ ] 2.3 Add validation for narrowly documented exceptions, verifying broad directory exclusions and undocumented exemptions fail.
+- [x] 2.3 Add validation for narrowly documented exceptions, verifying broad directory exclusions and undocumented exemptions fail.
 
 ## 3. Integrate and document
 
