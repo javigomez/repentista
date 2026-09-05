@@ -124,7 +124,17 @@ export function runInspectRhymesCommand(
   const service = createInspectApprovedRhymes({
     dictionary: deps.dictionary,
     analyzer: deps.analyzer,
-    catalog: deps.catalog,
+    catalog: deps.catalog ?? {
+      dictionaryVersion: parsed.args.dictionaryVersion,
+      dialectPolicyVersion: "unconfigured",
+      families: [],
+      findFamilyByWord: () => undefined,
+      findFamilyByTail: () => undefined,
+      findRhymesForWord: () => [],
+      findRhymesForFamily: () => [],
+      explainRhymesForWord: () => ({ words: [], explanation: { code: "word-not-indexed", filters: {}, consideredApprovedWords: [], exclusions: [] } }),
+      explainRhymesForFamily: () => ({ words: [], explanation: { code: "family-not-indexed", filters: {}, consideredApprovedWords: [], exclusions: [] } }),
+    },
   });
 
   const request: InspectApprovedRhymesRequest = {

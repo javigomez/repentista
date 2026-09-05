@@ -85,7 +85,7 @@ export type InspectApprovedRhymesResult =
 export interface InspectApprovedRhymesDependencies {
   readonly dictionary: ApprovedWordDictionary;
   readonly analyzer: WordAnalysisPort;
-  readonly catalog?: ApprovedConsonantRhymeCatalog;
+  readonly catalog: ApprovedConsonantRhymeCatalog;
 }
 
 export interface InspectApprovedRhymesService {
@@ -277,7 +277,6 @@ export function createInspectApprovedRhymes(
 
       const familyKey = extractRhymeKey(request.word, analysisResult);
 
-      if (deps.catalog === undefined) return { ok: false as const, error: { code: "CATALOG_INCONSISTENCY", message: "No se configuró el catálogo consonante aprobado.", analysisKey: familyKey, catalogKey: "" } };
       const catalogFamily = deps.catalog.findFamilyByWord(request.word);
       if (catalogFamily === undefined || catalogFamily.dictionaryVersion !== request.dictionaryVersion) {
         return { ok: false as const, error: { code: "CATALOG_INCONSISTENCY", message: "La palabra no tiene familia aprobada en el catálogo solicitado.", analysisKey: familyKey, catalogKey: "" } };
@@ -307,7 +306,9 @@ export function createInspectApprovedRhymes(
               syllables: Object.freeze([...analysisResult.syllables]),
             }),
           }),
-          family: Object.freeze({ key: catalogFamily.key }),
+          // Preserve the QG-40 public shape while sourcing the value from the
+          // approved catalog rather than exposing its internal composite id.
+          family: Object.freeze({ key: catalogFamily.tail.value }),
           candidates: Object.freeze([...candidates]),
           exclusions: Object.freeze([...exclusions]),
         }),

@@ -33,6 +33,67 @@ const request = (
 });
 
 test.describe("inspect-approved-rhymes", () => {
+  test.it("rejects a reliable analysis/catalog family mismatch with both keys", () => {
+    const catalog = createInspectRhymesCatalog();
+    const inconsistentCatalog = {
+      ...catalog,
+      findFamilyByWord: (word: string) => {
+        const family = catalog.findFamilyByWord(word);
+        return family === undefined
+          ? undefined
+          : { ...family, tail: { ...family.tail, value: "an" } };
+      },
+    };
+
+    const result = createInspectApprovedRhymes({
+      dictionary: createInspectRhymesDictionary(),
+      analyzer,
+      catalog: inconsistentCatalog,
+    }).inspect(request());
+
+    if (result.ok)
+      throw new Error("Expected inspection failure for catalog mismatch, got ok");
+
+    assert.equal(result.error.code, "CATALOG_INCONSISTENCY");
+    assert.equal(result.error.analysisKey, "on");
+    assert.equal(result.error.catalogKey, "an");
+  });
+
+  test.it("preserves catalog exclusions for doubtful or incompatible members", () => {
+    const catalog = createInspectRhymesCatalog();
+    const result = createInspectApprovedRhymes({
+      dictionary: createInspectRhymesDictionary(),
+      analyzer,
+      catalog: {
+        ...catalog,
+        explainRhymesForWord: () => ({
+          words: [],
+          explanation: {
+            code: "no-approved-rhyme-after-filters" as const,
+            familyTail: catalog.findFamilyByWord("dragón")?.tail,
+            filters: {},
+            consideredApprovedWords: ["balcón", "canción", "marrón"],
+            exclusions: [
+              { word: "balcón", code: "DOUBTFUL_ANALYSIS", message: "Análisis dudoso" },
+              { word: "canción", code: "METADATA_INCOMPATIBLE", message: "Metadatos incompatibles" },
+            ],
+          },
+        }),
+      },
+    }).inspect(request());
+
+    if (!result.ok)
+      throw new Error(`Expected inspection success, got ${result.error.code}`);
+
+    assert.deepEqual(
+      result.value.exclusions.map((exclusion) => [exclusion.form, exclusion.reason.code]),
+      [
+        ["balcón", "DOUBTFUL_ANALYSIS"],
+        ["canción", "METADATA_INCOMPATIBLE"],
+      ],
+    );
+  });
+
   test.it(
     "returns the approved family with analysis and stable editorial ordering",
     () => {

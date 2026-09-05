@@ -1,7 +1,7 @@
 ## 1. Specify the regression first
 
 - [x] 1.1 Add failing acceptance tests with orthographically similar words that the approved catalog deliberately separates, verifying `inspect-rhymes` never invents candidates.
-- [ ] 1.2 Add failing tests for analysis/catalog inconsistency and excluded doubtful members, verifying both keys and exclusion evidence are preserved.
+- [x] 1.2 Add failing tests for analysis/catalog inconsistency and excluded doubtful members, verifying both keys and exclusion evidence are preserved.
 - [ ] 1.3 Add a catalog spy to the inspection fixtures and verify a successful query proves that the catalog API was called with the requested version and filters.
 
 ## 2. Delegate to the approved catalog
