@@ -29,11 +29,15 @@ test("normalizes a valid generation brief with explicit options", () => {
     scheme: "0-A-0-A",
     rhyme: "consonant",
     metricPositions: 7,
+    verseRetryBudget: 3,
+    llmCallBudget: 200,
   });
 });
 
 test("applies versioned defaults and returns an immutable brief", () => {
-  const result = createGenerationBrief({ context: "Compartir conserva la amistad" });
+  const result = createGenerationBrief({
+    context: "Compartir conserva la amistad",
+  });
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -47,6 +51,8 @@ test("applies versioned defaults and returns an immutable brief", () => {
     scheme: "0-A-0-A",
     rhyme: "consonant",
     metricPositions: 7,
+    verseRetryBudget: 3,
+    llmCallBudget: 200,
   });
   assert.equal(Object.isFrozen(result.value), true);
 });
@@ -81,8 +87,14 @@ test("reports every invalid field instead of stopping at the first error", () =>
       "metricPositions",
     ],
   );
-  assert.equal(result.errors.find((error) => error.field === "scheme")?.code, "UNSUPPORTED_SCHEME");
-  assert.equal(result.errors.find((error) => error.field === "rhyme")?.code, "UNSUPPORTED_RHYME");
+  assert.equal(
+    result.errors.find((error) => error.field === "scheme")?.code,
+    "UNSUPPORTED_SCHEME",
+  );
+  assert.equal(
+    result.errors.find((error) => error.field === "rhyme")?.code,
+    "UNSUPPORTED_RHYME",
+  );
   assert.equal(
     result.errors.find((error) => error.field === "metricPositions")?.code,
     "UNSUPPORTED_METRIC",
@@ -101,6 +113,10 @@ test("rejects other poetic forms even when the context is valid", () => {
 
     assert.equal(result.ok, false, label);
     if (result.ok) continue;
-    assert.deepEqual(result.errors.map((error) => error.field), [field], label);
+    assert.deepEqual(
+      result.errors.map((error) => error.field),
+      [field],
+      label,
+    );
   }
 });
