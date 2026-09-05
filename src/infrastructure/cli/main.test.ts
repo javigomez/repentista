@@ -45,6 +45,8 @@ describe("generate CLI argument parsing", () => {
         scheme: "0-A-0-A",
         rhyme: "consonant",
         metricPositions: 7,
+        verseRetryBudget: 3,
+        llmCallBudget: 200,
       },
     });
   });
