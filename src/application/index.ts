@@ -1,4 +1,5 @@
 /** Public entrypoint for application use cases. */
+export * from "./semantic-outline-planner/index.js";
 export type { ApplicationHandler } from "./application-handler.js";
 export * from "./batch-duplicate-detection/index.js";
 export * from "./approved-lexicon/index.js";
