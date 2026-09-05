@@ -8,6 +8,7 @@ import {
 } from "./index.js";
 import {
   createInspectRhymesDictionary,
+  createInspectRhymesCatalog,
   INSPECT_RHYMES_DICTIONARY_VERSION,
 } from "./inspect-approved-rhymes-fixtures.js";
 
@@ -37,7 +38,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request());
 
       if (!result.ok)
@@ -62,7 +63,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ category: "sustantivo", role: "PREPARATION" }));
 
       if (!result.ok)
@@ -92,7 +93,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ category: "verbo" }));
 
       if (!result.ok)
@@ -127,7 +128,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ word: "quimera" }));
 
       if (result.ok)
@@ -143,7 +144,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ dictionaryVersion: "dictionary-9999-01-01" }));
 
       if (result.ok)
@@ -177,7 +178,7 @@ test.describe("inspect-approved-rhymes", () => {
 
     const result = createInspectApprovedRhymes({
       dictionary: createInspectRhymesDictionary(),
-      analyzer: doubtfulAnalyzer,
+      analyzer: doubtfulAnalyzer, catalog: createInspectRhymesCatalog(),
     }).inspect(request());
 
     if (result.ok)
@@ -198,7 +199,7 @@ test.describe("inspect-approved-rhymes", () => {
   test.it("works fully offline without any LLM or generation provider", () => {
     const result = createInspectApprovedRhymes({
       dictionary: createInspectRhymesDictionary(),
-      analyzer,
+    analyzer, catalog: createInspectRhymesCatalog(),
     }).inspect(request());
 
     if (!result.ok)

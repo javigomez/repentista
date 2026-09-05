@@ -5,6 +5,7 @@ import type {
 import { createInspectApprovedRhymes } from "../../../application/inspect-approved-rhymes/index.js";
 import type { ApprovedWordDictionary } from "../../../content/approved-word-dictionary/index.js";
 import type { WordAnalysisPort } from "../../../ports/index.js";
+import type { ApprovedConsonantRhymeCatalog } from "../../../content/approved-consonant-rhyme-catalog/index.js";
 
 export const INSPECT_RHYMES_EXIT_CODES = Object.freeze({
   SUCCESS: 0,
@@ -17,6 +18,7 @@ export const INSPECT_RHYMES_EXIT_CODES = Object.freeze({
 export interface InspectRhymesCliDependencies {
   readonly dictionary: ApprovedWordDictionary;
   readonly analyzer: WordAnalysisPort;
+  readonly catalog?: ApprovedConsonantRhymeCatalog;
 }
 
 export interface InspectRhymesCliArgs {
@@ -96,6 +98,8 @@ export function inspectRhymesExitCode(
       return INSPECT_RHYMES_EXIT_CODES.DICTIONARY_VERSION_UNAVAILABLE;
     case "DOUBTFUL_ANALYSIS":
       return INSPECT_RHYMES_EXIT_CODES.DOUBTFUL_ANALYSIS;
+    case "CATALOG_INCONSISTENCY":
+      return INSPECT_RHYMES_EXIT_CODES.DOUBTFUL_ANALYSIS;
   }
 }
 
@@ -120,6 +124,7 @@ export function runInspectRhymesCommand(
   const service = createInspectApprovedRhymes({
     dictionary: deps.dictionary,
     analyzer: deps.analyzer,
+    catalog: deps.catalog,
   });
 
   const request: InspectApprovedRhymesRequest = {

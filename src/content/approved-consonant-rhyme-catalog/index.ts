@@ -78,6 +78,7 @@ export interface ApprovedConsonantRhymeExplanation {
   readonly familyTail?: ConsonantPhoneticTail;
   readonly filters: ApprovedConsonantRhymeFilters;
   readonly consideredApprovedWords: readonly string[];
+  readonly exclusions: readonly { readonly word: string; readonly code: string; readonly message: string }[];
 }
 
 export interface ApprovedConsonantRhymeLookupResult {
@@ -291,6 +292,7 @@ const explain = (
   familyTail: ConsonantPhoneticTail | undefined,
   filters: ApprovedConsonantRhymeFilters,
   consideredApprovedWords: readonly string[],
+  exclusions: readonly { readonly word: string; readonly code: string; readonly message: string }[],
   notIndexedCode: "word-not-indexed" | "family-not-indexed",
 ): ApprovedConsonantRhymeLookupResult => {
   const hasFilters = filters.categories !== undefined || filters.editorialRoles !== undefined;
@@ -310,6 +312,7 @@ const explain = (
       ...(familyTail === undefined ? {} : { familyTail }),
       filters,
       consideredApprovedWords,
+      exclusions,
     }),
   });
 };
@@ -433,7 +436,15 @@ export function buildApprovedConsonantRhymeCatalog(
     );
     const filteredWords = rhymesForFamily(family, filters, sourceWord);
 
-    return explain(filteredWords, family?.tail, filters, considered, notIndexedCode);
+    const exclusions = family === undefined ? [] : family.words
+      .filter((word) => word.normalizedForm !== normalizedSourceWord && !matchesFilters(word, filters))
+      .map((word) => ({
+        word: word.word,
+        code: filters.categories !== undefined && !filters.categories.includes(word.category)
+          ? "CATEGORY_MISMATCH" : "ROLE_NOT_ALLOWED",
+        message: "La palabra fue excluida por los filtros solicitados.",
+      }));
+    return explain(filteredWords, family?.tail, filters, considered, exclusions, notIndexedCode);
   };
 
   const catalog: ApprovedConsonantRhymeCatalog = {

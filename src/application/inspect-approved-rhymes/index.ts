@@ -6,6 +6,7 @@ import type {
   WordAnalysisPort,
   WordAnalysisResult,
 } from "../../ports/index.js";
+import type { ApprovedConsonantRhymeCatalog } from "../../content/approved-consonant-rhyme-catalog/index.js";
 
 export interface InspectApprovedRhymesRequest {
   readonly word: string;
@@ -15,7 +16,7 @@ export interface InspectApprovedRhymesRequest {
 }
 
 export type InspectApprovedRhymesErrorCode =
-  "UNKNOWN_WORD" | "DICTIONARY_VERSION_UNAVAILABLE" | "DOUBTFUL_ANALYSIS";
+  "UNKNOWN_WORD" | "DICTIONARY_VERSION_UNAVAILABLE" | "DOUBTFUL_ANALYSIS" | "CATALOG_INCONSISTENCY";
 
 export type InspectApprovedRhymesError =
   | {
@@ -34,7 +35,8 @@ export type InspectApprovedRhymesError =
       readonly message: string;
       readonly word: string;
       readonly analysisError: string;
-    };
+    }
+  | { readonly code: "CATALOG_INCONSISTENCY"; readonly message: string; readonly analysisKey: string; readonly catalogKey: string };
 
 export interface InspectWordInfo {
   readonly form: string;
@@ -83,6 +85,7 @@ export type InspectApprovedRhymesResult =
 export interface InspectApprovedRhymesDependencies {
   readonly dictionary: ApprovedWordDictionary;
   readonly analyzer: WordAnalysisPort;
+  readonly catalog?: ApprovedConsonantRhymeCatalog;
 }
 
 export interface InspectApprovedRhymesService {
@@ -274,50 +277,25 @@ export function createInspectApprovedRhymes(
 
       const familyKey = extractRhymeKey(request.word, analysisResult);
 
-      const allWordsResult = deps.dictionary.findAllByVersion({
-        version: request.dictionaryVersion,
-      });
-
-      if (!allWordsResult.ok) {
-        return Object.freeze({
-          ok: false as const,
-          error: Object.freeze({
-            code: "DICTIONARY_VERSION_UNAVAILABLE" as const,
-            message: `La versión del diccionario "${request.dictionaryVersion}" no está disponible.`,
-            version: request.dictionaryVersion,
-            availableVersions: allWordsResult.error.availableVersions,
-          }),
-        });
+      if (deps.catalog === undefined) return { ok: false as const, error: { code: "CATALOG_INCONSISTENCY", message: "No se configuró el catálogo consonante aprobado.", analysisKey: familyKey, catalogKey: "" } };
+      const catalogFamily = deps.catalog.findFamilyByWord(request.word);
+      if (catalogFamily === undefined || catalogFamily.dictionaryVersion !== request.dictionaryVersion) {
+        return { ok: false as const, error: { code: "CATALOG_INCONSISTENCY", message: "La palabra no tiene familia aprobada en el catálogo solicitado.", analysisKey: familyKey, catalogKey: "" } };
       }
-
-      const familyMembers = allWordsResult.entries.filter(
-        (entry) => entry.normalizedForm !== wordEntry.normalizedForm,
-      );
+      if (catalogFamily.tail.value !== familyKey) {
+        return { ok: false as const, error: { code: "CATALOG_INCONSISTENCY", message: "El análisis y el catálogo discrepan.", analysisKey: familyKey, catalogKey: catalogFamily.tail.value } };
+      }
+      const filters = {
+        ...(request.category === undefined ? {} : { categories: [request.category] }),
+        ...(request.role === undefined ? {} : { editorialRoles: [request.role.toLowerCase() as "preparation" | "punchline"] }),
+      };
+      const lookup = deps.catalog.explainRhymesForWord(request.word, filters);
 
       const candidates: InspectCandidate[] = [];
       const exclusions: InspectExclusion[] = [];
 
-      for (const member of familyMembers) {
-        const memberAnalysis = deps.analyzer.analyze(member.form);
-
-        if (!memberAnalysis.ok) continue;
-
-        const memberFamily = extractRhymeKey(member.form, memberAnalysis);
-
-        if (memberFamily !== familyKey) continue;
-
-        const exclusion = buildExclusion(
-          member,
-          request.category,
-          request.role,
-        );
-
-        if (exclusion !== undefined) {
-          exclusions.push(exclusion);
-        } else {
-          candidates.push(toCandidate(member));
-        }
-      }
+      for (const member of lookup.words) candidates.push({ form: member.word, category: member.category, roles: { preparation: member.editorialRoles.includes("preparation"), punchline: member.editorialRoles.includes("punchline") } });
+      for (const exclusion of lookup.explanation.exclusions) exclusions.push({ form: exclusion.word, reason: exclusion });
 
       return Object.freeze({
         ok: true as const,
@@ -329,7 +307,7 @@ export function createInspectApprovedRhymes(
               syllables: Object.freeze([...analysisResult.syllables]),
             }),
           }),
-          family: Object.freeze({ key: familyKey }),
+          family: Object.freeze({ key: catalogFamily.key }),
           candidates: Object.freeze([...candidates]),
           exclusions: Object.freeze([...exclusions]),
         }),
