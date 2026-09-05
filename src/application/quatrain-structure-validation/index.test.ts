@@ -29,6 +29,8 @@ function readyCandidate() {
       scheme: "0-A-0-A",
       rhyme: "consonant",
       metricPositions: 7,
+      verseRetryBudget: 3,
+      llmCallBudget: 200,
     },
     plan: {
       rhymeScheme: "0-A-0-A",
@@ -184,6 +186,8 @@ describe("quatrain structure validation integration", () => {
           scheme: "0-A-0-A",
           rhyme: "consonant",
           metricPositions: 7,
+          verseRetryBudget: 3,
+          llmCallBudget: 200,
         },
         plan: {
           rhymeScheme: "0-A-0-A",

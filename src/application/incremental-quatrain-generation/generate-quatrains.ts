@@ -243,7 +243,6 @@ export async function generateQuatrains(
         if (cancelled() || exhausted()) break;
         const verse = await collaborators.writeVerse(slot, { plan, words, anchors, verses: [...verses] });
         llmCallsMade += 1;
-      llmCallsMade += 1;
 
         auditEvents.push(
         Object.freeze({

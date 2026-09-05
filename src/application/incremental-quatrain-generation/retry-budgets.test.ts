@@ -129,7 +129,6 @@ describe("retry budgets", () => {
 
 describe("V4/V2 backtracking", () => {
   it("backtracks to the next V4/V2 pair when the first pair cannot produce valid verses", async () => {
-    let pairIndex = 0;
     const pairs = [
       { v4: "sol", v2: "farol" },
       { v4: "mar", v2: "altar" },
@@ -139,9 +138,10 @@ describe("V4/V2 backtracking", () => {
       briefWithRetry,
       collaborators({
         finalWords: async () => pairs,
-        writeVerse: async (slot, _input) => {
+        writeVerse: async (slot, input) => {
           // First pair always produces bad verses; second and third succeed
-          if (pairIndex === 0) return `bad-verso-${slot}`;
+          const { words } = input as { words: { v4: string; v2: string } };
+          if (words.v4 === pairs[0].v4) return `bad-verso-${slot}`;
           return `verso-${slot}`;
         },
         validateVerse: async (_slot, verse) => {
