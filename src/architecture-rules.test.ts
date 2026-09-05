@@ -29,6 +29,52 @@ test("catalog boundary rejects consumer imports that bypass the owner", () => {
   );
 });
 
+test("application, CLI and validator consumers cannot derive families locally", () => {
+  for (const path of [
+    "src/application/rhymes.ts",
+    "src/infrastructure/cli/commands/inspect-rhymes.ts",
+    "src/validators/rhyme/index.ts",
+  ]) {
+    assert.throws(
+      () =>
+        assertConsonantRhymeCatalogBoundary(
+          path,
+          "const familyTail = word.slice(word.lastIndexOf('a'));",
+        ),
+      new RegExp(`${path.replaceAll("/", "\\/")}.*catalog boundary`, "i"),
+    );
+  }
+
+  assert.doesNotThrow(() =>
+    assertConsonantRhymeCatalogBoundary(
+      "src/application/text-normalization.ts",
+      "return value.trim().toLocaleLowerCase('es');",
+    ),
+  );
+});
+
+test("adversarial catalog doubles expose consumers that infer families from spelling", () => {
+  const catalog = {
+    findFamilyByWord(word: string): { key: string } | undefined {
+      return word === "dragón" ? { key: "catalog-approved-family" } : undefined;
+    },
+  };
+
+  const consumer = (word: string): string => {
+    // This deliberately resembles an orthographic implementation while the
+    // double assigns a contradictory family. A real consumer must delegate.
+    return word.slice(word.lastIndexOf("a"));
+  };
+
+  const expected = catalog.findFamilyByWord("dragón");
+  assert.ok(expected, "fixture must provide the adversarial catalog family");
+  assert.notEqual(
+    consumer("dragón"),
+    expected.key,
+    "a consumer bypassing the catalog must not accidentally pass the double",
+  );
+});
+
 test("architecture rules reject a domain import into infrastructure", () => {
   assert.throws(
     () => assertLayerDependencies("domain", ["../infrastructure/cli/main.js"]),
