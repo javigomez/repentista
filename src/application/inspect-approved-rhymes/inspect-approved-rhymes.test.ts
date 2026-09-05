@@ -8,6 +8,7 @@ import {
 } from "./index.js";
 import {
   createInspectRhymesDictionary,
+  createInspectRhymesCatalog,
   INSPECT_RHYMES_DICTIONARY_VERSION,
 } from "./inspect-approved-rhymes-fixtures.js";
 
@@ -32,12 +33,73 @@ const request = (
 });
 
 test.describe("inspect-approved-rhymes", () => {
+  test.it("rejects a reliable analysis/catalog family mismatch with both keys", () => {
+    const catalog = createInspectRhymesCatalog();
+    const inconsistentCatalog = {
+      ...catalog,
+      findFamilyByWord: (word: string) => {
+        const family = catalog.findFamilyByWord(word);
+        return family === undefined
+          ? undefined
+          : { ...family, tail: { ...family.tail, value: "an" } };
+      },
+    };
+
+    const result = createInspectApprovedRhymes({
+      dictionary: createInspectRhymesDictionary(),
+      analyzer,
+      catalog: inconsistentCatalog,
+    }).inspect(request());
+
+    if (result.ok)
+      throw new Error("Expected inspection failure for catalog mismatch, got ok");
+
+    assert.equal(result.error.code, "CATALOG_INCONSISTENCY");
+    assert.equal(result.error.analysisKey, "on");
+    assert.equal(result.error.catalogKey, "an");
+  });
+
+  test.it("preserves catalog exclusions for doubtful or incompatible members", () => {
+    const catalog = createInspectRhymesCatalog();
+    const result = createInspectApprovedRhymes({
+      dictionary: createInspectRhymesDictionary(),
+      analyzer,
+      catalog: {
+        ...catalog,
+        explainRhymesForWord: () => ({
+          words: [],
+          explanation: {
+            code: "no-approved-rhyme-after-filters" as const,
+            familyTail: catalog.findFamilyByWord("dragón")?.tail,
+            filters: {},
+            consideredApprovedWords: ["balcón", "canción", "marrón"],
+            exclusions: [
+              { word: "balcón", code: "DOUBTFUL_ANALYSIS", message: "Análisis dudoso" },
+              { word: "canción", code: "METADATA_INCOMPATIBLE", message: "Metadatos incompatibles" },
+            ],
+          },
+        }),
+      },
+    }).inspect(request());
+
+    if (!result.ok)
+      throw new Error(`Expected inspection success, got ${result.error.code}`);
+
+    assert.deepEqual(
+      result.value.exclusions.map((exclusion) => [exclusion.form, exclusion.reason.code]),
+      [
+        ["balcón", "DOUBTFUL_ANALYSIS"],
+        ["canción", "METADATA_INCOMPATIBLE"],
+      ],
+    );
+  });
+
   test.it(
     "returns the approved family with analysis and stable editorial ordering",
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request());
 
       if (!result.ok)
@@ -62,7 +124,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ category: "sustantivo", role: "PREPARATION" }));
 
       if (!result.ok)
@@ -92,7 +154,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ category: "verbo" }));
 
       if (!result.ok)
@@ -127,7 +189,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ word: "quimera" }));
 
       if (result.ok)
@@ -143,7 +205,7 @@ test.describe("inspect-approved-rhymes", () => {
     () => {
       const result = createInspectApprovedRhymes({
         dictionary: createInspectRhymesDictionary(),
-        analyzer,
+        analyzer, catalog: createInspectRhymesCatalog(),
       }).inspect(request({ dictionaryVersion: "dictionary-9999-01-01" }));
 
       if (result.ok)
@@ -177,7 +239,7 @@ test.describe("inspect-approved-rhymes", () => {
 
     const result = createInspectApprovedRhymes({
       dictionary: createInspectRhymesDictionary(),
-      analyzer: doubtfulAnalyzer,
+      analyzer: doubtfulAnalyzer, catalog: createInspectRhymesCatalog(),
     }).inspect(request());
 
     if (result.ok)
@@ -198,7 +260,7 @@ test.describe("inspect-approved-rhymes", () => {
   test.it("works fully offline without any LLM or generation provider", () => {
     const result = createInspectApprovedRhymes({
       dictionary: createInspectRhymesDictionary(),
-      analyzer,
+    analyzer, catalog: createInspectRhymesCatalog(),
     }).inspect(request());
 
     if (!result.ok)
@@ -213,5 +275,38 @@ test.describe("inspect-approved-rhymes", () => {
       result.value.candidates.length > 0,
       "Must return candidates from dictionary alone",
     );
+  });
+
+  test.it("queries the catalog with the requested snapshot and filters", () => {
+    const catalog = createInspectRhymesCatalog();
+    let observedWord: string | undefined;
+    let observedFilters: object | undefined;
+    const inspectingCatalog = {
+      ...catalog,
+      explainRhymesForWord: (word: string, filters = {}) => {
+        observedWord = word;
+        observedFilters = filters;
+        return catalog.explainRhymesForWord(word, filters);
+      },
+    };
+
+    const result = createInspectApprovedRhymes({
+      dictionary: createInspectRhymesDictionary(),
+      analyzer,
+      catalog: inspectingCatalog,
+    }).inspect(request({ category: "sustantivo", role: "PREPARATION" }));
+
+    if (!result.ok)
+      throw new Error(`Expected inspection success, got ${result.error.code}`);
+
+    assert.equal(observedWord, "dragón");
+    assert.equal(
+      inspectingCatalog.dictionaryVersion,
+      INSPECT_RHYMES_DICTIONARY_VERSION,
+    );
+    assert.deepEqual(observedFilters, {
+      categories: ["sustantivo"],
+      editorialRoles: ["preparation"],
+    });
   });
 });

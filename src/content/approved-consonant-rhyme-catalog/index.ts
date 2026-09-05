@@ -73,11 +73,18 @@ export type ApprovedConsonantRhymeExplanationCode =
   | "no-approved-rhyme-in-family"
   | "no-approved-rhyme-after-filters";
 
+export interface ApprovedConsonantRhymeExclusion {
+  readonly word: string;
+  readonly code: string;
+  readonly message: string;
+}
+
 export interface ApprovedConsonantRhymeExplanation {
   readonly code: ApprovedConsonantRhymeExplanationCode;
   readonly familyTail?: ConsonantPhoneticTail;
   readonly filters: ApprovedConsonantRhymeFilters;
   readonly consideredApprovedWords: readonly string[];
+  readonly exclusions: readonly ApprovedConsonantRhymeExclusion[];
 }
 
 export interface ApprovedConsonantRhymeLookupResult {
@@ -291,6 +298,7 @@ const explain = (
   familyTail: ConsonantPhoneticTail | undefined,
   filters: ApprovedConsonantRhymeFilters,
   consideredApprovedWords: readonly string[],
+  exclusions: readonly ApprovedConsonantRhymeExclusion[],
   notIndexedCode: "word-not-indexed" | "family-not-indexed",
 ): ApprovedConsonantRhymeLookupResult => {
   const hasFilters = filters.categories !== undefined || filters.editorialRoles !== undefined;
@@ -309,7 +317,8 @@ const explain = (
       code,
       ...(familyTail === undefined ? {} : { familyTail }),
       filters,
-      consideredApprovedWords,
+      consideredApprovedWords: Object.freeze([...consideredApprovedWords]),
+      exclusions: Object.freeze(exclusions.map((exclusion) => Object.freeze({ ...exclusion }))),
     }),
   });
 };
@@ -433,7 +442,15 @@ export function buildApprovedConsonantRhymeCatalog(
     );
     const filteredWords = rhymesForFamily(family, filters, sourceWord);
 
-    return explain(filteredWords, family?.tail, filters, considered, notIndexedCode);
+    const exclusions = family === undefined ? [] : family.words
+      .filter((word) => word.normalizedForm !== normalizedSourceWord && !matchesFilters(word, filters))
+      .map((word) => ({
+        word: word.word,
+        code: filters.categories !== undefined && !filters.categories.includes(word.category)
+          ? "CATEGORY_MISMATCH" : "ROLE_NOT_ALLOWED",
+        message: "La palabra fue excluida por los filtros solicitados.",
+      }));
+    return explain(filteredWords, family?.tail, filters, considered, exclusions, notIndexedCode);
   };
 
   const catalog: ApprovedConsonantRhymeCatalog = {
