@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import type { WordAnalysisPort } from "../../../ports/index.js";
 import { createInMemoryApprovedWordDictionary } from "../../../content/approved-word-dictionary/index.js";
+import { buildApprovedConsonantRhymeCatalog } from "../../../content/approved-consonant-rhyme-catalog/index.js";
 import {
   parseInspectRhymesArgs,
   inspectRhymesExitCode,
@@ -38,10 +39,36 @@ function createTestDictionary() {
           allowedAsPreparation: true,
           allowedAsPunchline: true,
         },
+        {
+          version: DICTIONARY_VERSION,
+          form: "camión",
+          lemma: "camión",
+          tonicity: "aguda",
+          category: "sustantivo",
+          level: "basico",
+          status: "approved",
+          allowedAsPreparation: true,
+          allowedAsPunchline: true,
+        },
       ],
     },
   });
 }
+
+function createTestCatalog() {
+  return buildApprovedConsonantRhymeCatalog({
+    dictionaryVersion: DICTIONARY_VERSION,
+    entries: ["dragón", "balcón"].map((word) => ({
+      word, lemma: word, normalizedForm: word, category: "sustantivo",
+      stress: "aguda" as const, phoneticTail: "on", status: "approved" as const,
+      editorialRoles: ["preparation" as const, "punchline" as const],
+    })),
+  });
+}
+
+const cliDependencies = () => ({
+  dictionary: createTestDictionary(), analyzer, catalog: createTestCatalog(),
+});
 
 const analyzer: WordAnalysisPort = {
   analyze: (form) => ({
@@ -175,7 +202,7 @@ test.describe("inspect-rhymes CLI", () => {
       "returns JSON output and success exit code for a valid word",
       () => {
         const result = runInspectRhymesCommand(
-          { dictionary: createTestDictionary(), analyzer },
+          cliDependencies(),
           ["--word", "dragón", "--dictionary-version", DICTIONARY_VERSION],
         );
 
@@ -188,10 +215,34 @@ test.describe("inspect-rhymes CLI", () => {
     );
 
     test.it(
+      "does not invent candidates from dictionary words with a similar spelling",
+      () => {
+        const result = runInspectRhymesCommand(
+          cliDependencies(),
+          ["--word", "dragón", "--dictionary-version", DICTIONARY_VERSION],
+        );
+
+        assert.equal(result.exitCode, 0);
+        const parsed = JSON.parse(result.output);
+        assert.equal(parsed.ok, true);
+        assert.deepEqual(
+          parsed.value.candidates.map((candidate: { form: string }) => candidate.form),
+          ["balcón"],
+        );
+        assert.ok(
+          !parsed.value.candidates.some(
+            (candidate: { form: string }) => candidate.form === "camión",
+          ),
+          "A dictionary entry absent from the approved catalog must not be invented as a candidate",
+        );
+      },
+    );
+
+    test.it(
       "returns JSON error output and exit code 1 for unknown word",
       () => {
         const result = runInspectRhymesCommand(
-          { dictionary: createTestDictionary(), analyzer },
+          cliDependencies(),
           ["--word", "quimera", "--dictionary-version", DICTIONARY_VERSION],
         );
 
@@ -207,7 +258,7 @@ test.describe("inspect-rhymes CLI", () => {
       "returns JSON error output and exit code 4 for missing arguments",
       () => {
         const result = runInspectRhymesCommand(
-          { dictionary: createTestDictionary(), analyzer },
+          cliDependencies(),
           [],
         );
 
@@ -222,7 +273,7 @@ test.describe("inspect-rhymes CLI", () => {
       "produces output without importing any LLM or generation module",
       () => {
         const result = runInspectRhymesCommand(
-          { dictionary: createTestDictionary(), analyzer },
+          cliDependencies(),
           ["--word", "dragón", "--dictionary-version", DICTIONARY_VERSION],
         );
 
