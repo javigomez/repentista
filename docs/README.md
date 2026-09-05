@@ -15,6 +15,7 @@ Esta carpeta convierte en especificaciones de trabajo la conversación compartid
 9. [Decisiones y cuestiones abiertas](09-decisiones-y-cuestiones-abiertas.md)
 10. [Estructura del proyecto y pipeline de generación](10-estructura-del-proyecto.md)
 11. [Aprendizajes para el creador de cuartetas](11-aprendizajes-para-el-creador-de-cuartetas.md)
+12. [Testing y límites de arquitectura](12-testing-y-arquitectura.md)
 
 ## Principios transversales
 
