@@ -82,6 +82,14 @@ test("catalog boundary rejects consumer imports that bypass the owner", () => {
   );
 });
 
+test("catalog boundary points maintainers to the owner-map testing guide", async () => {
+  const guide = await readFile("docs/12-testing-y-arquitectura.md", "utf8");
+
+  assert.match(guide, /approved-consonant-rhyme-catalog/);
+  assert.match(guide, /excepci[oó]n/i);
+  assert.match(guide, /condici[oó]n de retirada/i);
+});
+
 test("application, CLI and validator consumers cannot derive families locally", () => {
   for (const path of [
     "src/application/rhymes.ts",

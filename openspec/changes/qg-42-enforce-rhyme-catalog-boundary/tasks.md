@@ -11,5 +11,5 @@
 
 ## 3. Integrate and document
 
-- [ ] 3.1 Document the owner map and exception-removal convention in the testing guide, verifying the architecture test points maintainers to that guidance.
-- [ ] 3.2 Run the architecture family, `npm test` and `npm run build`, verifying QG-41-compliant consumers pass and the full suite remains offline.
+- [x] 3.1 Document the owner map and exception-removal convention in the testing guide, verifying the architecture test points maintainers to that guidance.
+- [x] 3.2 Run the architecture family, `npm test` and `npm run build`, verifying QG-41-compliant consumers pass and the full suite remains offline.
