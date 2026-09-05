@@ -276,4 +276,37 @@ test.describe("inspect-approved-rhymes", () => {
       "Must return candidates from dictionary alone",
     );
   });
+
+  test.it("queries the catalog with the requested snapshot and filters", () => {
+    const catalog = createInspectRhymesCatalog();
+    let observedWord: string | undefined;
+    let observedFilters: object | undefined;
+    const inspectingCatalog = {
+      ...catalog,
+      explainRhymesForWord: (word: string, filters = {}) => {
+        observedWord = word;
+        observedFilters = filters;
+        return catalog.explainRhymesForWord(word, filters);
+      },
+    };
+
+    const result = createInspectApprovedRhymes({
+      dictionary: createInspectRhymesDictionary(),
+      analyzer,
+      catalog: inspectingCatalog,
+    }).inspect(request({ category: "sustantivo", role: "PREPARATION" }));
+
+    if (!result.ok)
+      throw new Error(`Expected inspection success, got ${result.error.code}`);
+
+    assert.equal(observedWord, "dragón");
+    assert.equal(
+      inspectingCatalog.dictionaryVersion,
+      INSPECT_RHYMES_DICTIONARY_VERSION,
+    );
+    assert.deepEqual(observedFilters, {
+      categories: ["sustantivo"],
+      editorialRoles: ["preparation"],
+    });
+  });
 });
