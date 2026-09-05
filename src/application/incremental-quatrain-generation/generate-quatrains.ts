@@ -190,6 +190,20 @@ export async function generateQuatrains(
 
   const now = (): number => Date.now();
 
+  if (options?.signal?.aborted) {
+    throw Object.assign(new Error("Generation cancelled"), { name: "AbortError" });
+  }
+  const exhausted = (): boolean => llmCallsMade >= brief.llmCallBudget;
+  const cancelled = (): boolean => options?.signal?.aborted === true;
+  const unreliable = (stage: string, reason: string): void => {
+    rejected.push({ stage, reason });
+    auditEvents.push(Object.freeze({ type: "BRANCH_REJECTED", timestamp: now(), pairIndex: branchesAttempted, stage, reason }));
+  };
+
+  if (exhausted()) {
+    unreliable("budget", "LLM budget exhausted");
+    return Object.freeze({ finalists: [], rejected: Object.freeze(rejected), status: "UNRELIABLE", auditEvents: Object.freeze(auditEvents), metrics: Object.freeze({ branchesAttempted: 0, branchesCompleted: 0, branchesRejected: 0, finalistsProduced: 0, llmCallsMade, verseRetries }), rejectedBranchSummary: Object.freeze(summaryCounts) });
+  }
   const plan = await collaborators.plan(brief);
   llmCallsMade += 1;
 
@@ -202,6 +216,10 @@ export async function generateQuatrains(
   const scored: Finalist[] = [];
 
   for (const words of wordPairs.slice(0, brief.candidateCount)) {
+    if (cancelled() || exhausted()) {
+      unreliable("budget", cancelled() ? "generation cancelled" : "LLM budget exhausted");
+      break;
+    }
     const pairIndex = branchesAttempted;
     branchesAttempted += 1;
 
@@ -220,15 +238,14 @@ export async function generateQuatrains(
     let blocked = false;
 
     for (const slot of [1, 2, 3, 4] as const) {
-      const verse = await collaborators.writeVerse(slot, {
-        plan,
-        words,
-        anchors,
-        verses: [...verses],
-      });
+      let accepted: string | undefined;
+      for (let attempt = 0; attempt <= brief.verseRetryBudget; attempt += 1) {
+        if (cancelled() || exhausted()) break;
+        const verse = await collaborators.writeVerse(slot, { plan, words, anchors, verses: [...verses] });
+        llmCallsMade += 1;
       llmCallsMade += 1;
 
-      auditEvents.push(
+        auditEvents.push(
         Object.freeze({
           type: "VERSE_WRITTEN",
           timestamp: now(),
@@ -236,15 +253,20 @@ export async function generateQuatrains(
           slot,
           verse,
         }),
-      );
+        );
 
-      const validation = await collaborators.validateVerse(slot, verse, {
+        let validation = await collaborators.validateVerse(slot, verse, {
         plan,
         words,
         anchors,
       });
 
-      auditEvents.push(
+        if (validation.verdict === "DUDOSO" && collaborators.repairMetric !== undefined) {
+          const repaired = await collaborators.repairMetric(slot, verse);
+          if (repaired.verdict === "VALIDO") { validation = { verdict: "VALIDO" }; accepted = repaired.repaired; }
+          else validation = { verdict: "INVALIDO", diagnostic: "metric repair failed" };
+        } else if (validation.verdict === "VALIDO") accepted = verse;
+        auditEvents.push(
         Object.freeze({
           type: "VERSE_VALIDATED",
           timestamp: now(),
@@ -253,11 +275,14 @@ export async function generateQuatrains(
           verdict: validation.verdict,
           diagnostic: validation.diagnostic,
         }),
-      );
+        );
 
-      if (validation.verdict !== "VALIDO") {
+        if (accepted !== undefined) break;
+        if (attempt < brief.verseRetryBudget) { verseRetries += 1; continue; }
+        if (cancelled() || exhausted()) break;
         const reason = validation.diagnostic ?? validation.verdict;
-        rejected.push({ stage: `V${slot}_VALIDATED`, reason });
+        const finalReason = `${reason}; retry budget exhausted`;
+        rejected.push({ stage: `V${slot}_VALIDATED`, reason: finalReason });
         summaryCounts.verseValidation += 1;
         auditEvents.push(
           Object.freeze({
@@ -265,14 +290,15 @@ export async function generateQuatrains(
             timestamp: now(),
             pairIndex,
             stage: `V${slot}_VALIDATED`,
-            reason,
+            reason: finalReason,
           }),
         );
         branchesRejected += 1;
         blocked = true;
         break;
       }
-      verses.push(verse);
+      if (accepted === undefined) { blocked = true; break; }
+      verses.push(accepted);
     }
 
     if (blocked || verses.length !== 4) continue;
@@ -302,6 +328,7 @@ export async function generateQuatrains(
       continue;
     }
 
+    if (exhausted() || cancelled()) { unreliable("budget", cancelled() ? "generation cancelled" : "LLM budget exhausted"); break; }
     const evaluated = await collaborators.evaluate(tuple, {
       plan,
       words,

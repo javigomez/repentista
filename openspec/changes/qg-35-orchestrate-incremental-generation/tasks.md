@@ -12,7 +12,7 @@
 
 ## 3. Integration and verification
 
-- [ ] 3.1 Add a deterministic golden-flow fixture for the egoísmo example, verifying each intermediate artifact and validator transition rather than matching private reasoning.
+- [x] 3.1 Add a deterministic golden-flow fixture for the egoísmo example, verifying each intermediate artifact and validator transition rather than matching private reasoning.
 - [ ] 3.2 Run `npm test` and `npm run build`, verifying the complete application use case passes without concrete infrastructure.
 
 ## Refactor conventions for implementation
