@@ -73,12 +73,18 @@ export type ApprovedConsonantRhymeExplanationCode =
   | "no-approved-rhyme-in-family"
   | "no-approved-rhyme-after-filters";
 
+export interface ApprovedConsonantRhymeExclusion {
+  readonly word: string;
+  readonly code: string;
+  readonly message: string;
+}
+
 export interface ApprovedConsonantRhymeExplanation {
   readonly code: ApprovedConsonantRhymeExplanationCode;
   readonly familyTail?: ConsonantPhoneticTail;
   readonly filters: ApprovedConsonantRhymeFilters;
   readonly consideredApprovedWords: readonly string[];
-  readonly exclusions: readonly { readonly word: string; readonly code: string; readonly message: string }[];
+  readonly exclusions: readonly ApprovedConsonantRhymeExclusion[];
 }
 
 export interface ApprovedConsonantRhymeLookupResult {
@@ -292,7 +298,7 @@ const explain = (
   familyTail: ConsonantPhoneticTail | undefined,
   filters: ApprovedConsonantRhymeFilters,
   consideredApprovedWords: readonly string[],
-  exclusions: readonly { readonly word: string; readonly code: string; readonly message: string }[],
+  exclusions: readonly ApprovedConsonantRhymeExclusion[],
   notIndexedCode: "word-not-indexed" | "family-not-indexed",
 ): ApprovedConsonantRhymeLookupResult => {
   const hasFilters = filters.categories !== undefined || filters.editorialRoles !== undefined;
@@ -311,8 +317,8 @@ const explain = (
       code,
       ...(familyTail === undefined ? {} : { familyTail }),
       filters,
-      consideredApprovedWords,
-      exclusions,
+      consideredApprovedWords: Object.freeze([...consideredApprovedWords]),
+      exclusions: Object.freeze(exclusions.map((exclusion) => Object.freeze({ ...exclusion }))),
     }),
   });
 };

@@ -1,7 +1,4 @@
-import type {
-  ApprovedWord,
-  ApprovedWordDictionary,
-} from "../../content/approved-word-dictionary/index.js";
+import type { ApprovedWordDictionary } from "../../content/approved-word-dictionary/index.js";
 import type {
   WordAnalysisPort,
   WordAnalysisResult,
@@ -92,32 +89,12 @@ export interface InspectApprovedRhymesService {
   inspect(request: InspectApprovedRhymesRequest): InspectApprovedRhymesResult;
 }
 
-const VOWELS = /[aeiouáéíóú]/iu;
-
-function isVowel(char: string): boolean {
-  return VOWELS.test(char);
-}
-
-function stripAccents(value: string): string {
-  return value.normalize("NFD").replace(/\p{M}/gu, "");
-}
-
 function extractRhymeKey(
   word: string,
   analysis: Extract<WordAnalysisResult, { ok: true }>,
 ): string {
   const form = word.toLocaleLowerCase("es");
-  const vowelPositions: number[] = [];
-
-  for (let i = 0; i < form.length; i++) {
-    if (isVowel(form[i]!)) {
-      vowelPositions.push(i);
-    }
-  }
-
-  if (vowelPositions.length === 0) {
-    return stripAccents(form);
-  }
+  const vowels = /[aeiouáéíóú]/iu;
 
   const syllables = analysis.syllables;
   const stressedIndex = analysis.stressedSyllableIndex;
@@ -130,95 +107,17 @@ function extractRhymeKey(
     const stressedEnd = stressedStart + stressedSyllable.length;
 
     for (let i = stressedStart; i < stressedEnd && i < form.length; i++) {
-      if (isVowel(form[i]!)) {
+      if (vowels.test(form[i]!)) {
         lastStressedVowelPos = i;
       }
     }
   }
 
   if (lastStressedVowelPos < 0) {
-    lastStressedVowelPos = vowelPositions[vowelPositions.length - 1]!;
+    return form.normalize("NFD").replace(/\p{M}/gu, "");
   }
 
-  return stripAccents(form.slice(lastStressedVowelPos));
-}
-
-function matchesCategory(
-  word: ApprovedWord,
-  category: string | undefined,
-): boolean {
-  if (category === undefined) return true;
-  return word.category === category;
-}
-
-function matchesRole(word: ApprovedWord, role: string | undefined): boolean {
-  if (role === undefined) return true;
-  const normalizedRole = role.toUpperCase();
-  if (normalizedRole === "PREPARATION") return word.allowedAsPreparation;
-  if (normalizedRole === "PUNCHLINE") return word.allowedAsPunchline;
-  return true;
-}
-
-function toCandidate(word: ApprovedWord): InspectCandidate {
-  return Object.freeze({
-    form: word.form,
-    category: word.category,
-    roles: Object.freeze({
-      preparation: word.allowedAsPreparation,
-      punchline: word.allowedAsPunchline,
-    }),
-  });
-}
-
-function exclusionReason(
-  code: string,
-  message: string,
-): InspectExclusionReason {
-  return Object.freeze({ code, message });
-}
-
-function buildExclusion(
-  word: ApprovedWord,
-  category: string | undefined,
-  role: string | undefined,
-): InspectExclusion | undefined {
-  const reasons: InspectExclusionReason[] = [];
-
-  if (category !== undefined && word.category !== category) {
-    reasons.push(
-      exclusionReason(
-        "CATEGORY_MISMATCH",
-        `La categoría "${word.category}" no coincide con el filtro "${category}".`,
-      ),
-    );
-  }
-
-  if (role !== undefined) {
-    const normalizedRole = role.toUpperCase();
-    if (normalizedRole === "PREPARATION" && !word.allowedAsPreparation) {
-      reasons.push(
-        exclusionReason(
-          "ROLE_NOT_ALLOWED",
-          `La palabra no permite el rol PREPARATION.`,
-        ),
-      );
-    }
-    if (normalizedRole === "PUNCHLINE" && !word.allowedAsPunchline) {
-      reasons.push(
-        exclusionReason(
-          "ROLE_NOT_ALLOWED",
-          `La palabra no permite el rol PUNCHLINE.`,
-        ),
-      );
-    }
-  }
-
-  if (reasons.length === 0) return undefined;
-
-  return Object.freeze({
-    form: word.form,
-    reason: reasons[0]!,
-  });
+  return form.slice(lastStressedVowelPos).normalize("NFD").replace(/\p{M}/gu, "");
 }
 
 export function createInspectApprovedRhymes(
